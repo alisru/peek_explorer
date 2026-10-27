@@ -1069,8 +1069,8 @@ function wireDropTarget(el, getTargetDir, onHoverExpand = null) {
     // Filter out no-op drops (dropping a file into the folder it's already in, or dropping a folder onto itself)
     const validSrcs = srcs.filter(s => {
       const ns = normPath(s);
-      if (!ns || ns === normDest) return false;
-      if (op === 'cut' && normPath(parent(s)) === normDest) return false;
+      if (!ns) return false;
+      if (op === 'cut' && (ns === normDest || normPath(parent(s)) === normDest)) return false;
       return true;
     });
     if (!validSrcs.length) return;
@@ -4977,10 +4977,25 @@ async function doPaste(dest) {
   await syncClip();
   if (!clip) return;
   const r = await window.api.paste(clip.mode, clip.paths, dest);
-  if (r.moved && r.moved.length) undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+  if (r.moved && r.moved.length) {
+    undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+    $('status').textContent = `✓ Moved ${r.moved.length} item${r.moved.length > 1 ? 's' : ''} → "${baseName(dest)}" (Ctrl+Z to undo)`;
+  } else if (r.copied && r.copied.length) {
+    $('status').textContent = `✓ Pasted ${r.copied.length} item${r.copied.length > 1 ? 's' : ''} (${r.copied.map(c => baseName(c.to)).join(', ')})`;
+  }
   if (clip.mode === 'cut') await storeClip(null);
-  if (r.skipped.length) alert('Skipped (already exists or failed):\n' + r.skipped.join('\n'));
-  refreshKeep();
+  if (r.skipped && r.skipped.length) alert('Skipped (already exists or failed):\n' + r.skipped.join('\n'));
+  await refreshKeep();
+  if (r.copied && r.copied.length) {
+    clearSelection();
+    const newPaths = new Set(r.copied.map(c => c.to));
+    for (const row of visibleRows()) {
+      if (row._item && newPaths.has(row._item.path)) {
+        setRowSelected(row._item, row, true);
+      }
+    }
+    updateStatus();
+  }
 }
 // Surgical in-place DOM & state update after rename (never resets #list or scroll position!)
 function applyItemRenameInPlace(it, cell, newPath) {
