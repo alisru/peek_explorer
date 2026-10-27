@@ -41,13 +41,15 @@ let cur = HOME_URI, hist = [HOME_URI], hi = 0, totalCount = 0;
 let mode = 'details', sortKey = 'name', sortAsc = true, groupKey = 'none';
 let folderViews = {}, defaultView = 'details';
 let landscapePalette = 'default'; // 'default' | 'inherit' | 'dna' | 'rainbow' | 'rainbow-sync' | 'rainbow-async' | 'skittles' | 'pastel' | 'neon' | 'breathing' | 'rain-puddle' | 'disco' | 'dusco' | 'deep-dusco'
-let modePaletteIndex = 0; // 0..4 = 5 Curated Palettes, 5 = Custom Palette
-let customPaletteColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6'];
+const DEFAULT_CUSTOM_SWATCHES = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6'];
+let modePaletteIndex = {}; // { [modeKey]: 0..5 } (0..4 = 5 Curated Palettes, 5 = Custom Palette)
+let customPaletteColors = {}; // { [modeKey]: ['#hex', ...] }
 let inheritShiftMode = 'lighter'; // 'lighter' | 'darker' | 'hue-shift' | 'exact'
 let landscapeBg = 'grid'; // 'grid' | 'space' | 'plain' | 'custom-color' | 'custom-image'
 let landscapeBgColor = '#0f172a';
 let landscapeBgImage = '';
 let canvasReactMode = true;
+let accentColor = '#0067c0';
 let defaultFrameColor = '#0067c0';
 let defaultBgColor = '#1e293b';
 let roomBgOpacity = 100; // Default 100% per spec
@@ -72,8 +74,77 @@ let lockBg = false;
 let holdRenameEnabled = true;
 let holdRenameDelay = 550;
 
-// 5 Prescribed Palettes + Custom per Mode
+const DEFAULT_HOTKEYS = {
+  modCameraZoom: 'Shift',
+  modCameraPan: 'Alt',
+  modIndoorZoom: 'Alt',
+  modRoomScale: 'Alt+Shift',
+  modLoupe: 'Ctrl+Shift',
+  newTab: 'Ctrl+T',
+  closeTab: 'Ctrl+W',
+  reopenTab: 'Ctrl+Shift+T',
+  newFolder: 'Ctrl+Shift+N',
+  newWindow: 'Ctrl+N',
+  toggleTerminal: 'Ctrl+`',
+  togglePreview: 'Alt+P',
+  toggleSplit: 'Alt+S',
+  focusAddress: 'Ctrl+L',
+  focusSearch: 'Ctrl+F',
+  goHome: 'Alt+Home',
+  rename: 'F2',
+  refresh: 'F5'
+};
+let hotkeys = { ...DEFAULT_HOTKEYS };
+
+function eventToCombo(e) {
+  const parts = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  if (!['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+    const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    parts.push(k);
+  }
+  return parts.join('+');
+}
+
+function matchesHotkey(e, actionId) {
+  const target = (hotkeys[actionId] || DEFAULT_HOTKEYS[actionId] || '').toLowerCase();
+  if (!target) return false;
+  return eventToCombo(e).toLowerCase() === target;
+}
+
+function matchesModifiers(e, modActionId, exact = false) {
+  const spec = (hotkeys[modActionId] || DEFAULT_HOTKEYS[modActionId] || '').toLowerCase();
+  if (!spec) return false;
+  const needCtrl = spec.includes('ctrl');
+  const needAlt = spec.includes('alt');
+  const needShift = spec.includes('shift');
+  if (exact) {
+    return !!e.ctrlKey === needCtrl && !!e.altKey === needAlt && !!e.shiftKey === needShift;
+  }
+  if (needCtrl && !e.ctrlKey) return false;
+  if (needAlt && !e.altKey) return false;
+  if (needShift && !e.shiftKey) return false;
+  return true;
+}
+
+// 5 Prescribed Palettes + Custom per Mode (All 14 Modes Covered!)
 const MODE_PALETTES = {
+  default: [
+    { name: '1. Peek Classic Blue', colors: ['#0067c0', '#0284c7', '#2563eb', '#3b82f6', '#0ea5e9', '#1d4ed8', '#38bdf8'] },
+    { name: '2. Warm Amber Slate', colors: ['#d97706', '#f59e0b', '#ea580c', '#e11d48', '#fb923c', '#b45309', '#facc15'] },
+    { name: '3. Cool Teal & Cyan', colors: ['#0d9488', '#0891b2', '#06b6d4', '#14b8a6', '#0284c7', '#2dd4bf', '#38bdf8'] },
+    { name: '4. Emerald Forest', colors: ['#059669', '#10b981', '#16a34a', '#22c55e', '#0d9488', '#34d399', '#4ade80'] },
+    { name: '5. Royal Amethyst', colors: ['#7c3aed', '#8b5cf6', '#6366f1', '#9333ea', '#a855f7', '#4f46e5', '#c084fc'] }
+  ],
+  inherit: [
+    { name: '1. Oceanic Hierarchy', colors: ['#0284c7', '#06b6d4', '#3b82f6', '#0ea5e9', '#2563eb', '#38bdf8', '#6366f1'] },
+    { name: '2. Warm Solar Hierarchy', colors: ['#ea580c', '#f59e0b', '#e11d48', '#d97706', '#f97316', '#dc2626', '#eab308'] },
+    { name: '3. Emerald Canopy Hierarchy', colors: ['#10b981', '#059669', '#0d9488', '#22c55e', '#14b8a6', '#16a34a', '#84cc16'] },
+    { name: '4. Violet Nebula Hierarchy', colors: ['#8b5cf6', '#7c3aed', '#ec4899', '#6366f1', '#a855f7', '#d946ef', '#3b82f6'] },
+    { name: '5. Monochrome Steel Hierarchy', colors: ['#94a3b8', '#cbd5e1', '#64748b', '#e2e8f0', '#475569', '#f8fafc', '#334155'] }
+  ],
   rainbow: [
     { name: '1. Classic Spectrum', colors: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'] },
     { name: '2. Warm Rainbow', colors: ['#e11d48', '#ea580c', '#f59e0b', '#eab308', '#f97316', '#dc2626', '#fb7185'] },
@@ -143,18 +214,37 @@ MODE_PALETTES['rainbow-async'] = MODE_PALETTES.rainbow;
 MODE_PALETTES['rainbow-wave'] = MODE_PALETTES.rainbow;
 MODE_PALETTES['rain-puddle'] = MODE_PALETTES.breathing;
 
+function getModePaletteIdx(modeKey = landscapePalette) {
+  if (typeof modePaletteIndex === 'object' && modePaletteIndex !== null) {
+    return typeof modePaletteIndex[modeKey] === 'number' ? modePaletteIndex[modeKey] : 0;
+  }
+  return Number(modePaletteIndex) || 0;
+}
+
+function getModeCustomSwatches(modeKey = landscapePalette) {
+  if (customPaletteColors && typeof customPaletteColors === 'object' && !Array.isArray(customPaletteColors)) {
+    if (Array.isArray(customPaletteColors[modeKey]) && customPaletteColors[modeKey].length === 7) {
+      return customPaletteColors[modeKey];
+    }
+  } else if (Array.isArray(customPaletteColors) && customPaletteColors.length === 7) {
+    return customPaletteColors;
+  }
+  return MODE_PALETTES[modeKey] ? [...MODE_PALETTES[modeKey][0].colors.slice(0, 7)] : [...DEFAULT_CUSTOM_SWATCHES];
+}
+
 function getActivePaletteEntry(modeKey = landscapePalette) {
   const list = MODE_PALETTES[modeKey];
   if (!list) return null;
-  if (modePaletteIndex === 5) {
-    return { name: 'Custom Palette', colors: customPaletteColors, rim: breathTargetColor, bg: breathTargetBgColor, glow: breathTargetColor };
+  const idx = getModePaletteIdx(modeKey);
+  if (idx === 5) {
+    return { name: 'Custom Palette', colors: getModeCustomSwatches(modeKey), rim: breathTargetColor, bg: breathTargetBgColor, glow: breathTargetColor };
   }
-  return list[Math.max(0, Math.min(list.length - 1, modePaletteIndex))] || list[0];
+  return list[Math.max(0, Math.min(list.length - 1, idx))] || list[0];
 }
 
 function getActivePaletteColors(modeKey = landscapePalette) {
   const entry = getActivePaletteEntry(modeKey);
-  return (entry && entry.colors && entry.colors.length) ? entry.colors : customPaletteColors;
+  return (entry && entry.colors && entry.colors.length) ? entry.colors : getModeCustomSwatches(modeKey);
 }
 
 function hexToRgbObj(hex) {
@@ -176,20 +266,20 @@ function shiftColorShade(hex, style = 'lighter', step = 1) {
   if (style === 'exact') return hex;
   const { r, g, b } = hexToRgbObj(hex);
   if (style === 'lighter') {
-    const t = Math.min(0.65, 0.18 * step);
+    const t = Math.min(0.78, 0.28 * step);
     return rgbToHex(r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t);
   }
   if (style === 'darker') {
-    const t = Math.max(0.25, 1 - 0.2 * step);
+    const t = Math.max(0.2, Math.pow(0.72, step));
     return rgbToHex(r * t, g * t, b * t);
   }
   if (style === 'floor-bg') {
-    // Rich dark room floor tinted with the room's frame color
-    return rgbToHex(14 + r * 0.18, 18 + g * 0.18, 28 + b * 0.18);
+    // Rich room floor tinted noticeably with the room's frame color
+    return rgbToHex(12 + r * 0.26, 16 + g * 0.26, 26 + b * 0.26);
   }
   if (style === 'hue-shift') {
-    // Rotate RGB channels smoothly per depth step
-    const angle = (step * 28 * Math.PI) / 180;
+    // Rotate RGB channels distinctly per depth / branch step
+    const angle = (step * 42 * Math.PI) / 180;
     const cosA = Math.cos(angle), sinA = Math.sin(angle);
     const nr = r * (0.213 + cosA * 0.787 - sinA * 0.213) + g * (0.715 - cosA * 0.715 - sinA * 0.715) + b * (0.072 - cosA * 0.072 + sinA * 0.928);
     const ng = r * (0.213 - cosA * 0.213 + sinA * 0.143) + g * (0.715 + cosA * 0.285 + sinA * 0.140) + b * (0.072 - cosA * 0.072 - sinA * 0.283);
@@ -558,9 +648,29 @@ async function updatePreviewPane() {
   }
 }
 
-// ---- Semantic Gluon DNA Engine Cache & Preview Telemetry ----
+// ---- Semantic Gluon DNA Engine Cache & Lazy Loader ----
 const gluonCache = new Map();
-const GLUON_CACHE_MAX = 600;
+const GLUON_CACHE_MAX = 150;
+let gluonLoadPromise = null;
+
+function ensureGluonLoaded() {
+  if (typeof GluonEngine !== 'undefined') return Promise.resolve(true);
+  if (gluonLoadPromise) return gluonLoadPromise;
+  gluonLoadPromise = new Promise(resolve => {
+    const s1 = document.createElement('script');
+    s1.src = 'gluon_dictionary.js';
+    s1.onload = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'gluon_engine.js';
+      s2.onload = () => resolve(typeof GluonEngine !== 'undefined');
+      s2.onerror = () => resolve(false);
+      document.head.appendChild(s2);
+    };
+    s1.onerror = () => resolve(false);
+    document.head.appendChild(s1);
+  });
+  return gluonLoadPromise;
+}
 
 function getCachedGluonAnalysis(item, text) {
   const key = `${item.path}|${item.mtime}|${item.size}`;
@@ -787,9 +897,16 @@ function groupLabelFor(it) {
 // Icon pixel size per view. <=24 uses the small shell icon, bigger uses real Windows thumbnails.
 const PX = { details: 16, list: 16, small: 16, content: 32, tiles: 40, medium: 48, large: 96, xl: 190, lens: 64, landscape: 64 };
 const iconCache = new Map();
+const MAX_RENDERER_ICON_CACHE = 350;
 async function setIcon(img, it, px = PX[mode], unique = false) {
   const key = px + '|' + (unique || px > 24 || it.isDir ? it.path : (it.name.includes('.') ? it.name.split('.').pop().toLowerCase() : it.path));
-  if (!iconCache.has(key)) iconCache.set(key, window.api.icon(it.path, it.isDir, px, unique));
+  if (!iconCache.has(key)) {
+    if (iconCache.size >= MAX_RENDERER_ICON_CACHE) {
+      const oldest = iconCache.keys().next().value;
+      iconCache.delete(oldest);
+    }
+    iconCache.set(key, window.api.icon(it.path, it.isDir, px, unique));
+  }
   const url = await iconCache.get(key);
   if (url) img.src = url;
 }
@@ -836,21 +953,87 @@ function applyFilter() {
 // ---- Drag & drop helper ----
 const MIME_PATHS = 'application/x-peek-paths';
 const MIME_TAB = 'application/x-peek-tab';
+let activeDragPaths = []; // Fallback in-memory drag payload if OS drag or DOM dataTransfer strips custom MIME
+
 function hasSupportedDrop(types) {
+  if (activeDragPaths && activeDragPaths.length > 0) return true;
   if (!types) return false;
   return types.includes(MIME_PATHS) || types.includes('Files');
+}
+
+let dragGhostEl = null;
+function setCustomDragGhost(e, paths, primaryName) {
+  try {
+    if (!dragGhostEl) {
+      dragGhostEl = document.createElement('div');
+      dragGhostEl.className = 'peek-drag-ghost';
+      document.body.appendChild(dragGhostEl);
+    }
+    const count = paths.length;
+    dragGhostEl.innerHTML = count > 1
+      ? `<span class="dg-badge">${count}</span><span class="dg-text">Moving ${count} items (${primaryName}…)</span>`
+      : `<span class="dg-ico">📦</span><span class="dg-text">Move "${primaryName}"</span>`;
+    e.dataTransfer.setDragImage(dragGhostEl, 14, 14);
+  } catch (_) {}
+}
+
+function beginItemDrag(e, it, rowEl) {
+  cancelPendingRename();
+  if (!selected.has(it.path)) selectClick(it, rowEl, null);
+  const paths = [...selected.keys()];
+  if (!paths.length) paths.push(it.path);
+  activeDragPaths = paths;
+  e.dataTransfer.setData(MIME_PATHS, JSON.stringify(paths));
+  e.dataTransfer.setData('text/plain', paths.join('\r\n'));
+  e.dataTransfer.effectAllowed = 'copyMove';
+  setCustomDragGhost(e, paths, it.name);
+  rowEl.classList.add('dragging-item');
+  // Note: Only invoke Electron's native OS shell startDrag when holding Alt (to drag out to Desktop / external apps),
+  // because calling webContents.startDrag unconditionally on Windows aborts in-app HTML5 dragover/drop events!
+  if (e.altKey && window.api && window.api.startDrag) {
+    window.api.startDrag(paths);
+  }
+}
+
+window.addEventListener('dragend', () => {
+  activeDragPaths = [];
+  for (const el of document.querySelectorAll('.dragging-item, .drop-target')) {
+    el.classList.remove('dragging-item', 'drop-target');
+  }
+});
+
+// Auto-scroll #list or .map-room-body when dragging near top/bottom edges
+document.addEventListener('dragover', e => {
+  if (!hasSupportedDrop(e.dataTransfer?.types)) return;
+  const scrollHost = e.target.closest?.('.map-room-body, #list, #spList, #nav');
+  if (!scrollHost) return;
+  const r = scrollHost.getBoundingClientRect();
+  const edge = 38;
+  if (e.clientY - r.top < edge && scrollHost.scrollTop > 0) {
+    scrollHost.scrollTop -= Math.ceil((edge - (e.clientY - r.top)) * 0.45);
+  } else if (r.bottom - e.clientY < edge) {
+    scrollHost.scrollTop += Math.ceil((edge - (r.bottom - e.clientY)) * 0.45);
+  }
+});
+
+function normPath(p) {
+  return String(p || '').replace(/[\\/]+$/, '').toLowerCase();
 }
 
 function wireDropTarget(el, getTargetDir, onHoverExpand = null) {
   let hoverTimer = null;
   el.addEventListener('dragover', e => {
     if (!hasSupportedDrop(e.dataTransfer.types)) return;
+    const dest = getTargetDir();
+    if (!dest || dest === HOME_URI || dest.startsWith('peek://')) return;
     e.preventDefault(); e.stopPropagation();
     e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
-    el.classList.add('drop-target');
-    if (onHoverExpand && !hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; onHoverExpand(); }, 650);
+    if (!el.classList.contains('drop-target')) el.classList.add('drop-target');
+    if (onHoverExpand && !hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; onHoverExpand(); }, 550);
   });
-  el.addEventListener('dragleave', () => {
+  el.addEventListener('dragleave', e => {
+    // Do NOT remove .drop-target or cancel hoverTimer when moving across child elements (.ico, .nm, .c-date, etc.) inside el!
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
     el.classList.remove('drop-target');
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
   });
@@ -858,10 +1041,15 @@ function wireDropTarget(el, getTargetDir, onHoverExpand = null) {
     el.classList.remove('drop-target');
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
     if (!hasSupportedDrop(e.dataTransfer.types)) return;
+    const dest = getTargetDir();
+    if (!dest || dest === HOME_URI || dest.startsWith('peek://')) return;
     e.preventDefault(); e.stopPropagation();
     let srcs = [];
     if (e.dataTransfer.types.includes(MIME_PATHS)) {
       try { srcs = JSON.parse(e.dataTransfer.getData(MIME_PATHS) || '[]'); } catch {}
+    }
+    if ((!srcs || !srcs.length) && activeDragPaths.length) {
+      srcs = [...activeDragPaths];
     }
     // Also extract native OS files (from Windows Explorer / Desktop / external apps)
     if ((!srcs || !srcs.length) && e.dataTransfer.files && e.dataTransfer.files.length) {
@@ -874,13 +1062,29 @@ function wireDropTarget(el, getTargetDir, onHoverExpand = null) {
         if (p) srcs.push(p);
       }
     }
-    const dest = getTargetDir();
-    if (!srcs.length || !dest || dest === HOME_URI) return;
+    activeDragPaths = [];
+    if (!srcs.length) return;
     const op = e.ctrlKey ? 'copy' : 'cut';
-    const r = await window.api.paste(op, srcs, dest);
-    if (r.moved && r.moved.length) undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+    const normDest = normPath(dest);
+    // Filter out no-op drops (dropping a file into the folder it's already in, or dropping a folder onto itself)
+    const validSrcs = srcs.filter(s => {
+      const ns = normPath(s);
+      if (!ns || ns === normDest) return false;
+      if (op === 'cut' && normPath(parent(s)) === normDest) return false;
+      return true;
+    });
+    if (!validSrcs.length) return;
+
+    const r = await window.api.paste(op, validSrcs, dest);
+    if (r.moved && r.moved.length) {
+      undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+      $('status').textContent = `✓ Moved ${r.moved.length} item${r.moved.length > 1 ? 's' : ''} → "${baseName(dest)}" (Ctrl+Z to undo)`;
+    } else if (op === 'copy') {
+      $('status').textContent = `✓ Copied ${validSrcs.length - (r.skipped?.length || 0)} item(s) → "${baseName(dest)}"`;
+    }
     if (r.skipped && r.skipped.length) alert('Skipped (already exists or invalid):\n' + r.skipped.join('\n'));
     show();
+    if (splitState.active) renderSplitPane();
   });
 }
 
@@ -947,20 +1151,24 @@ function makeItem(it, depth, parentCell = null) {
 
   if (selected.has(it.path)) { cell.classList.add('sel'); chk.checked = true; selected.set(it.path, { item: it, cell }); }
 
-  // Hold-down on row triggers inline rename unless dragged
-  let holdTimer = null;
+  // Hold-down on already-selected row triggers inline rename unless moved or dragged
+  let holdTimer = null, holdStartX = 0, holdStartY = 0;
   cell.addEventListener('mousedown', e => {
     if (e.button !== 0 || e.target.closest('.arrow') || e.target.tagName === 'INPUT') return;
     clearTimeout(holdTimer);
-    if (holdRenameEnabled) {
+    holdStartX = e.clientX; holdStartY = e.clientY;
+    const wasSelected = selected.size === 1 && selected.has(it.path) && !e.ctrlKey && !e.shiftKey;
+    if (holdRenameEnabled && wasSelected) {
       holdTimer = setTimeout(() => {
         holdTimer = null;
-        selectClick(it, cell, null);
         startRename(it, cell);
       }, holdRenameDelay);
     }
   });
   const clearHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+  cell.addEventListener('mousemove', e => {
+    if (holdTimer && Math.hypot(e.clientX - holdStartX, e.clientY - holdStartY) > 3) clearHold();
+  });
   cell.addEventListener('mouseup', clearHold);
   cell.addEventListener('mouseleave', clearHold);
   cell.addEventListener('dragstart', clearHold);
@@ -997,15 +1205,7 @@ function makeItem(it, depth, parentCell = null) {
       newTab(it.path, [], e.shiftKey);
     }
   });
-  cell.addEventListener('dragstart', e => {
-    cancelPendingRename();
-    if (!selected.has(it.path)) selectClick(it, cell, null);
-    const paths = [...selected.keys()];
-    if (!paths.length) paths.push(it.path);
-    e.dataTransfer.setData(MIME_PATHS, JSON.stringify(paths));
-    e.dataTransfer.effectAllowed = 'copyMove';
-    if (window.api && window.api.startDrag) window.api.startDrag(paths);
-  });
+  cell.addEventListener('dragstart', e => beginItemDrag(e, it, cell));
 
   if (it.isDir) {
     const a = cell.querySelector('.arrow');
@@ -1024,6 +1224,7 @@ function makeItem(it, depth, parentCell = null) {
       else await cell._expand();
     });
     wireDropTarget(cell, () => it.path, () => cell._expand());
+    wireDropTarget(kids, () => it.path);
     if (expanded.has(it.path)) { kids.classList.add('open'); open(); }
   }
   return [cell, kids];
@@ -1579,6 +1780,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       </select>
     </label>
     <button data-act="lens" class="${edgeLensOn ? 'active' : ''}" title="Toggle Two-Rectangle Edge Lens for far-away Rooms">🖼️ Edge Lens: ON</button>
+    <button data-act="loupe" title="Toggle Magnifier Loupe (or Hold ${hotkeys.modLoupe || 'Ctrl+Shift'} · Scroll adjusts zoom)">🔎 Loupe</button>
     <span class="hud-coords" style="color:var(--muted);margin-left:2px">Scale: ${Math.round(camZoom * 100)}%</span>
   `;
   // Apply customized canvas background & atmosphere + 5+1 Mode Sub-Palette CSS Variables
@@ -1593,6 +1795,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
   const activePalEntry = getActivePaletteEntry(landscapePalette);
   const activeColors = getActivePaletteColors(landscapePalette);
+  const curPalIdx = getModePaletteIdx(landscapePalette);
   for (let i = 0; i < 7; i++) {
     const c = activeColors[i % activeColors.length] || defaultFrameColor;
     const floorHex = shiftColorShade(c, 'floor-bg');
@@ -1600,9 +1803,9 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     viewport.style.setProperty(`--bg${i + 1}`, colorToRgba(floorHex, roomBgOpacity / 100));
   }
 
-  const effBreathRim = (modePaletteIndex < 5 && activePalEntry?.rim) ? activePalEntry.rim : (breathTargetColor || '#ffffff');
-  const effBreathBg = (modePaletteIndex < 5 && activePalEntry?.bg) ? activePalEntry.bg : (breathTargetBgColor || '#334155');
-  const effBreathGlow = (modePaletteIndex < 5 && activePalEntry?.glow) ? activePalEntry.glow : effBreathRim;
+  const effBreathRim = (curPalIdx < 5 && activePalEntry?.rim) ? activePalEntry.rim : (breathTargetColor || '#ffffff');
+  const effBreathBg = (curPalIdx < 5 && activePalEntry?.bg) ? activePalEntry.bg : (breathTargetBgColor || '#334155');
+  const effBreathGlow = (curPalIdx < 5 && activePalEntry?.glow) ? activePalEntry.glow : effBreathRim;
 
   viewport.style.setProperty('--breath-duration', `${breathingDuration || 6}s`);
   viewport.style.setProperty('--puddle-duration', `${puddleRippleDuration || 5}s`);
@@ -1614,9 +1817,11 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   viewport.style.setProperty('--room-glow-intensity', (roomGlowIntensity ?? 50) / 100);
   viewport.style.setProperty('--room-glow-range', `${roomGlowRange ?? 18}px`);
   viewport.style.setProperty('--active-room-border', activeRoomBorderColor);
+  viewport.style.setProperty('--active-border-color', activeRoomBorderColor);
   viewport.style.setProperty('--active-room-glow', colorToRgba(activeRoomBorderColor, 0.45));
   document.documentElement.style.setProperty('--room-glow-intensity', (roomGlowIntensity ?? 50) / 100);
   document.documentElement.style.setProperty('--room-glow-range', `${roomGlowRange ?? 18}px`);
+  document.documentElement.style.setProperty('--active-room-border', activeRoomBorderColor);
 
   if (landscapeBg === 'space') {
     viewport.style.background = 'radial-gradient(circle at center, #1e1b4b 0%, #030712 100%)';
@@ -1631,32 +1836,86 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   }
 
   const loupeEl = document.createElement('div');
-  loupeEl.className = 'landscape-loupe';
+  loupeEl.className = 'magnifier-loupe';
   loupeEl.id = 'landscapeLoupe';
+  const loupeClone = document.createElement('div');
+  loupeClone.className = 'loupe-world-clone';
+  const loupeCross = document.createElement('div');
+  loupeCross.className = 'loupe-crosshair';
+  const loupeBadge = document.createElement('div');
+  loupeBadge.className = 'loupe-badge';
+  loupeBadge.textContent = '2.2×';
+  loupeEl.append(loupeClone, loupeCross, loupeBadge);
 
   viewport.append(world, innerFrame, marginLayer, marqueeEl, hud, radarWrap, loupeEl);
 
   let loupeActive = false;
-  const onLoupeKeyDown = e => {
-    if (e.ctrlKey && e.shiftKey && !loupeActive && $('landscape')?.style.display !== 'none') {
-      loupeActive = true;
-      loupeEl.style.display = 'block';
+  let loupePinned = false;
+  let loupeMag = 2.2;
+  let lastLoupeMx = 400, lastLoupeMy = 260;
+  const LOUPE_R = 105;
+
+  function syncLoupeCloneDOM() {
+    loupeClone.innerHTML = '';
+    for (const child of world.children) {
+      const cloned = child.cloneNode(true);
+      if (child.classList && child.classList.contains('map-room')) {
+        const srcBody = child.querySelector('.map-room-body');
+        const dstBody = cloned.querySelector('.map-room-body');
+        if (srcBody && dstBody) dstBody.scrollTop = srcBody.scrollTop;
+      }
+      loupeClone.appendChild(cloned);
     }
-  };
-  const onLoupeKeyUp = e => {
-    if (!e.ctrlKey || !e.shiftKey) {
-      loupeActive = false;
-      loupeEl.style.display = 'none';
-    }
-  };
-  window.addEventListener('keydown', onLoupeKeyDown);
-  window.addEventListener('keyup', onLoupeKeyUp);
-  viewport.addEventListener('mousemove', e => {
+  }
+
+  function updateLoupePosition() {
+    if (!loupeActive) return;
+    const rect = viewport.getBoundingClientRect();
+    loupeEl.style.left = Math.round(lastLoupeMx - LOUPE_R) + 'px';
+    loupeEl.style.top = Math.round(lastLoupeMy - LOUPE_R) + 'px';
+    const wx = (lastLoupeMx - rect.width / 2 - camX) / camZoom;
+    const wy = (lastLoupeMy - rect.height / 2 - camY) / camZoom;
+    const effScale = +(camZoom * loupeMag).toFixed(3);
+    const tx = Math.round(LOUPE_R - wx * effScale);
+    const ty = Math.round(LOUPE_R - wy * effScale);
+    loupeClone.style.transform = `translate(${tx}px, ${ty}px) scale(${effScale})`;
+    loupeBadge.textContent = `${loupeMag.toFixed(1)}×`;
+  }
+
+  function setLoupeActive(activeState) {
+    if (loupeActive === activeState) return;
+    loupeActive = activeState;
+    loupeEl.style.display = loupeActive ? 'block' : 'none';
+    hud.querySelector('[data-act="loupe"]')?.classList.toggle('active', loupeActive);
     if (loupeActive) {
-      const rect = viewport.getBoundingClientRect();
-      loupeEl.style.left = (e.clientX - rect.left - 90) + 'px';
-      loupeEl.style.top = (e.clientY - rect.top - 90) + 'px';
+      syncLoupeCloneDOM();
+      updateLoupePosition();
+    } else {
+      loupeClone.innerHTML = ''; // Immediately release cloned DOM nodes when Loupe closes
     }
+  }
+
+  if (window._onLoupeKeyDown) window.removeEventListener('keydown', window._onLoupeKeyDown);
+  if (window._onLoupeKeyUp) window.removeEventListener('keyup', window._onLoupeKeyUp);
+  window._onLoupeKeyDown = e => {
+    if (!document.body.contains(viewport)) return;
+    if (!loupeActive && matchesModifiers(e, 'modLoupe')) {
+      setLoupeActive(true);
+    }
+  };
+  window._onLoupeKeyUp = e => {
+    if (loupePinned) return;
+    if (loupeActive && !matchesModifiers(e, 'modLoupe')) {
+      setLoupeActive(false);
+    }
+  };
+  window.addEventListener('keydown', window._onLoupeKeyDown);
+  window.addEventListener('keyup', window._onLoupeKeyUp);
+  viewport.addEventListener('mousemove', e => {
+    const rect = viewport.getBoundingClientRect();
+    lastLoupeMx = e.clientX - rect.left;
+    lastLoupeMy = e.clientY - rect.top;
+    if (loupeActive) updateLoupePosition();
   });
 
   const roomMap = new Map(); // path -> { path, name, parentPath, x, y, w, h, ang, el, depth, subDirs, files }
@@ -1850,20 +2109,23 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
   // Deterministically computes the color for a room or the folder tile that opens into that room
   function computeRoomAndChildColor(roomPath, parentEntry, siblingIndex = 0, depth = 0, savedRoom = null) {
-    if (savedRoom && (savedRoom.lockFrame || savedRoom.lockBg) && savedRoom.roomColor) {
-      return savedRoom.roomColor;
-    }
-    if (savedRoom && savedRoom.roomColor && (landscapePalette === 'default' || savedRoom.lockFrame)) {
+    if (savedRoom && savedRoom.lockFrame && savedRoom.roomColor) {
       return savedRoom.roomColor;
     }
     const palArr = getActivePaletteColors(landscapePalette);
+    const palIdx = getModePaletteIdx(landscapePalette);
     if (landscapePalette === 'default') {
-      return (savedRoom && savedRoom.roomColor) ? savedRoom.roomColor : defaultFrameColor;
+      if (savedRoom && savedRoom.roomColor) return savedRoom.roomColor;
+      return palIdx > 0 ? (palArr[0] || defaultFrameColor) : defaultFrameColor;
     }
     if (landscapePalette === 'inherit') {
-      if (depth === 0 || !parentEntry) return (savedRoom && savedRoom.roomColor) ? savedRoom.roomColor : defaultFrameColor;
-      const base = parentEntry.roomColor || defaultFrameColor;
-      return shiftColorShade(base, inheritShiftMode, 1);
+      const rootBase = (savedRoom && depth === 0 && savedRoom.roomColor)
+        ? savedRoom.roomColor
+        : (palIdx > 0 ? (palArr[0] || defaultFrameColor) : defaultFrameColor);
+      if (depth === 0 || !parentEntry) return rootBase;
+      const base = parentEntry.roomColor || rootBase;
+      const stepVal = inheritShiftMode === 'hue-shift' ? (1 + (siblingIndex % 4) * 0.45) : 1;
+      return shiftColorShade(base, inheritShiftMode, stepVal);
     }
     if (landscapePalette === 'dna') {
       if (depth === 0 && !parentEntry) return palArr[0] || defaultFrameColor;
@@ -1941,24 +2203,27 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
     const roomColor = computeRoomAndChildColor(roomPath, parRm, sibIdx, depth, saved);
     let roomBg = defaultBgColor;
-    if (saved && saved.roomBgColor && (landscapePalette === 'default' || saved.lockBg)) {
+    if (saved && saved.roomBgColor && saved.lockBg) {
       roomBg = saved.roomBgColor;
-    } else if (landscapePalette !== 'default') {
+    } else if (landscapePalette === 'default' && saved && saved.roomBgColor) {
+      roomBg = saved.roomBgColor;
+    } else if (landscapePalette !== 'default' || getModePaletteIdx('default') > 0) {
       // Room background changes color across ALL color modes!
       roomBg = shiftColorShade(roomColor, 'floor-bg');
     }
 
+    const isKeyframeColorMode = !isLocked && ['disco', 'dusco', 'deep-dusco', 'rainbow-sync', 'rainbow-async', 'rainbow-wave'].includes(landscapePalette);
     rm.style.setProperty('--room-border-color', roomColor);
     rm.style.setProperty('--room-base-bg', colorToRgba(roomBg, roomBgOpacity / 100));
-    if (!lockFrame && !(saved && saved.lockFrame)) {
-      rm.style.borderColor = roomColor;
-    } else if (saved && saved.roomColor) {
-      rm.style.borderColor = saved.roomColor;
+    if (lockFrame || (saved && saved.lockFrame)) {
+      rm.style.borderColor = (saved && saved.roomColor) ? saved.roomColor : roomColor;
+    } else if (!isKeyframeColorMode) {
+      rm.style.borderColor = '';
     }
-    if (!lockBg && !(saved && saved.lockBg)) {
-      rm.style.background = colorToRgba(roomBg, roomBgOpacity / 100);
-    } else if (saved && saved.roomBgColor) {
-      rm.style.background = colorToRgba(saved.roomBgColor, roomBgOpacity / 100);
+    if (lockBg || (saved && saved.lockBg)) {
+      rm.style.backgroundColor = colorToRgba((saved && saved.roomBgColor) ? saved.roomBgColor : roomBg, roomBgOpacity / 100);
+    } else if (!isKeyframeColorMode) {
+      rm.style.backgroundColor = '';
     }
 
     rm.innerHTML = `
@@ -2284,33 +2549,43 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       const dimsEl = rm.querySelector('.rm-dims');
       if (dimsEl) dimsEl.textContent = `${entry.w}×${entry.h} · ${fmtSize(payloadBytes)}`;
 
-      entry.items.forEach(it => {
+      let dirCounter = 0;
+      const palArr = getActivePaletteColors(landscapePalette);
+      entry.items.forEach((it, itemIdx) => {
           const row = document.createElement('div');
           const isBridged = it.isDir && roomMap.has(it.path);
           row.className = 'room-item ' + (it.isDir ? 'is-dir' : 'is-file') + (isBridged ? ' bridged' : '');
           row._item = it;
           row.draggable = true;
           if (it.isDir) {
+            const dIdx = dirCounter++;
             row.dataset.subpath = it.path;
-            const baseRoomColor = entry.roomColor || defaultFrameColor;
-            row.style.setProperty('--folder-ambient-bg', colorToRgba(baseRoomColor, 0.04));
-            row.style.setProperty('--folder-ambient-bd', colorToRgba(baseRoomColor, 0.15));
-            row.style.setProperty('--folder-ambient-hover', colorToRgba(baseRoomColor, 0.1));
-            row.style.setProperty('--folder-ambient-bd-hover', colorToRgba(baseRoomColor, 0.35));
+            row.dataset.dirIndex = String(dIdx);
+            const childEntry = roomMap.get(it.path);
+            const targetChildColor = (childEntry && childEntry.roomColor)
+              ? childEntry.roomColor
+              : computeRoomAndChildColor(it.path, entry, dIdx, entry.depth + 1, layout.rooms?.[it.path]);
 
-            // No other mode should have random colors than the ones prescribed!
-            // Folder rows in this room use THIS room's prescribed color. Only skittles mode uses child palette color.
-            let activeColor = baseRoomColor;
-            if (landscapePalette === 'skittles') {
-              const childEntry = roomMap.get(it.path);
-              if (childEntry) activeColor = childEntry.roomColor;
-            }
-            if (isBridged) {
-              row.style.setProperty('--child-folder-bg', colorToRgba(activeColor, 0.14));
-              row.style.setProperty('--child-folder-bd', colorToRgba(activeColor, 0.5));
-              row.style.setProperty('--child-folder-hover', colorToRgba(activeColor, 0.22));
-              row.style.setProperty('--child-folder-glow', colorToRgba(activeColor, 0.4));
-            }
+            const unopenedBase = landscapePalette === 'default'
+              ? (entry.roomColor || defaultFrameColor)
+              : targetChildColor;
+            const lighterUnopened = shiftColorShade(unopenedBase, 'lighter', 1);
+            row.style.setProperty('--folder-ambient-bg', colorToRgba(lighterUnopened, 0.08));
+            row.style.setProperty('--folder-ambient-bd', colorToRgba(lighterUnopened, 0.26));
+            row.style.setProperty('--folder-ambient-hover', colorToRgba(unopenedBase, 0.16));
+            row.style.setProperty('--folder-ambient-bd-hover', colorToRgba(unopenedBase, 0.48));
+
+            const openedBase = useCustomSelectedFolder ? selectedFolderColor : targetChildColor;
+            const darkerOpened = shiftColorShade(openedBase, 'darker', 1);
+            row.style.setProperty('--child-folder-bg', colorToRgba(darkerOpened, 0.34));
+            row.style.setProperty('--child-folder-bd', colorToRgba(openedBase, 0.82));
+            row.style.setProperty('--child-folder-hover', colorToRgba(darkerOpened, 0.46));
+            row.style.setProperty('--child-folder-glow', colorToRgba(openedBase, 0.55));
+          } else if (landscapePalette === 'rainbow') {
+            // In Static Rainbow mode, file tiles also receive sequential rainbow colors in load order
+            const seqCol = palArr[(entry.depth + itemIdx) % palArr.length];
+            row.style.background = colorToRgba(seqCol, 0.08);
+            row.style.borderColor = colorToRgba(seqCol, 0.25);
           }
 
           row.innerHTML = `
@@ -2359,17 +2634,22 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
             }
           }
 
-          // Hold-down to inline rename
-          let holdTimer = null;
+          // Hold-down on already-selected item to inline rename unless moved or dragged
+          let holdTimer = null, holdStartX = 0, holdStartY = 0;
           row.addEventListener('mousedown', e => {
             if (e.altKey) return; // Allow Alt+Click to pass through for universal global camera pan!
             if (e.button !== 0 || e.target.tagName === 'INPUT' || (e.target.classList && e.target.classList.contains('rm-bridge-indicator'))) return;
             clearTimeout(holdTimer);
-            if (holdRenameEnabled) {
-              holdTimer = setTimeout(() => { holdTimer = null; selectClick(it, row, null); startRename(it, row); }, holdRenameDelay);
+            holdStartX = e.clientX; holdStartY = e.clientY;
+            const wasSelected = selected.size === 1 && selected.has(it.path) && !e.ctrlKey && !e.shiftKey;
+            if (holdRenameEnabled && wasSelected) {
+              holdTimer = setTimeout(() => { holdTimer = null; startRename(it, row); }, holdRenameDelay);
             }
           });
           const clearHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+          row.addEventListener('mousemove', e => {
+            if (holdTimer && Math.hypot(e.clientX - holdStartX, e.clientY - holdStartY) > 3) clearHold();
+          });
           row.addEventListener('mouseup', clearHold);
           row.addEventListener('mouseleave', clearHold);
           row.addEventListener('dragstart', clearHold);
@@ -2461,14 +2741,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
             showMenu(e.clientX, e.clientY, it);
           });
 
-          row.addEventListener('dragstart', e => {
-            if (!selected.has(it.path)) selectClick(it, row, null);
-            const paths = [...selected.keys()];
-            if (!paths.length) paths.push(it.path);
-            e.dataTransfer.setData(MIME_PATHS, JSON.stringify(paths));
-            e.dataTransfer.effectAllowed = 'copyMove';
-            if (window.api && window.api.startDrag) window.api.startDrag(paths);
-          });
+          row.addEventListener('dragstart', e => beginItemDrag(e, it, row));
 
           if (it.isDir) wireDropTarget(row, () => it.path);
 
@@ -2484,7 +2757,9 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   function syncDoorwayBadges() {
     for (const r of roomMap.values()) {
       for (const d of r.el.querySelectorAll('.room-item.is-dir')) {
-        const isBridged = roomMap.has(d.dataset.subpath);
+        const subPath = d.dataset.subpath;
+        const dIdx = parseInt(d.dataset.dirIndex || '0', 10);
+        const isBridged = roomMap.has(subPath);
         d.classList.toggle('bridged', isBridged);
         d.title = `${d._item ? d._item.name : 'Folder'} (${isBridged ? 'Room island is open on map · Click to close' : 'Click to open room island on map'})`;
         const ind = d.querySelector('.rm-bridge-indicator');
@@ -2493,17 +2768,25 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
           ind.textContent = isBridged ? '×' : '🏝️';
           ind.title = isBridged ? 'Island room is open on map (Click to close)' : 'Click to open island room on map';
         }
-        if (isBridged) {
-          let activeColor = r.roomColor || defaultFrameColor;
-          if (landscapePalette === 'skittles') {
-            const childEntry = roomMap.get(d.dataset.subpath);
-            if (childEntry) activeColor = childEntry.roomColor;
-          }
-          d.style.setProperty('--child-folder-bg', colorToRgba(activeColor, 0.14));
-          d.style.setProperty('--child-folder-bd', colorToRgba(activeColor, 0.5));
-          d.style.setProperty('--child-folder-hover', colorToRgba(activeColor, 0.22));
-          d.style.setProperty('--child-folder-glow', colorToRgba(activeColor, 0.4));
-        }
+        const childEntry = roomMap.get(subPath);
+        const targetChildColor = (childEntry && childEntry.roomColor)
+          ? childEntry.roomColor
+          : computeRoomAndChildColor(subPath, r, dIdx, r.depth + 1, layout.rooms?.[subPath]);
+        const unopenedBase = landscapePalette === 'default'
+          ? (r.roomColor || defaultFrameColor)
+          : targetChildColor;
+        const lighterUnopened = shiftColorShade(unopenedBase, 'lighter', 1);
+        d.style.setProperty('--folder-ambient-bg', colorToRgba(lighterUnopened, 0.08));
+        d.style.setProperty('--folder-ambient-bd', colorToRgba(lighterUnopened, 0.26));
+        d.style.setProperty('--folder-ambient-hover', colorToRgba(unopenedBase, 0.16));
+        d.style.setProperty('--folder-ambient-bd-hover', colorToRgba(unopenedBase, 0.48));
+
+        const openedBase = useCustomSelectedFolder ? selectedFolderColor : targetChildColor;
+        const darkerOpened = shiftColorShade(openedBase, 'darker', 1);
+        d.style.setProperty('--child-folder-bg', colorToRgba(darkerOpened, 0.34));
+        d.style.setProperty('--child-folder-bd', colorToRgba(openedBase, 0.82));
+        d.style.setProperty('--child-folder-hover', colorToRgba(darkerOpened, 0.46));
+        d.style.setProperty('--child-folder-glow', colorToRgba(openedBase, 0.55));
       }
     }
   }
@@ -2928,213 +3211,6 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     return entry;
   }
 
-  
-  // Browser Island Implementation with Auto-Sleep
-
-  function sleepBrowserIsland(entry) {
-    if (!browserAutoSleep || entry.isSleeping) return;
-    const frame = entry.el.querySelector('iframe');
-    const sleepTag = entry.el.querySelector('.browser-sleep-tag');
-    if (frame) {
-      entry.savedSrc = frame.src;
-      frame.src = 'about:blank';
-      entry.isSleeping = true;
-      if (sleepTag) sleepTag.style.display = 'inline-block';
-    }
-  }
-
-  function wakeBrowserIsland(entry) {
-    if (!entry.isSleeping) return;
-    const frame = entry.el.querySelector('iframe');
-    const sleepTag = entry.el.querySelector('.browser-sleep-tag');
-    if (frame && entry.savedSrc) {
-      frame.src = entry.savedSrc;
-      entry.isSleeping = false;
-      if (sleepTag) sleepTag.style.display = 'none';
-      entry.lastActiveTime = Date.now();
-    }
-  }
-
-  async function spawnBrowserIsland(initialUrl = 'https://www.google.com', title = 'Web Browser', prefPos = null) {
-    const rawKey = initialUrl;
-    if (browserMap.has(rawKey)) {
-      const existing = browserMap.get(rawKey);
-      wakeBrowserIsland(existing);
-      selectActiveRoom(rawKey);
-      camZoom = 1.6;
-      camX = -existing.x * camZoom;
-      camY = -existing.y * camZoom;
-      updateCameraAndLens();
-      return existing;
-    }
-    if (!layout.browserRooms) layout.browserRooms = {};
-    const saved = layout.browserRooms[rawKey];
-    const w = (saved && saved.w) ? saved.w : 640;
-    const h = (saved && saved.h) ? saved.h : 460;
-
-    let freePos;
-    if (saved && typeof saved.x === 'number') {
-      freePos = { x: saved.x, y: saved.y };
-    } else if (prefPos && typeof prefPos.x === 'number') {
-      freePos = findFreeRoomPos(prefPos.x, prefPos.y, w, h);
-    } else {
-      const actRm = roomMap.get(activeRoomPath) || roomMap.get(dir);
-      const px = actRm ? actRm.x + actRm.w / 2 + 120 : 450;
-      const py = actRm ? actRm.y : 0;
-      freePos = findFreeRoomPos(px, py, w, h);
-    }
-
-    layout.browserRooms[rawKey] = { x: freePos.x, y: freePos.y, w, h };
-
-    const rm = document.createElement('div');
-    rm.className = 'map-room browser-room' + (rawKey === activeRoomPath ? ' active-room' : '');
-    rm.style.left = freePos.x + 'px';
-    rm.style.top = freePos.y + 'px';
-    rm.style.setProperty('--room-w', w + 'px');
-    rm.style.setProperty('--room-h', h + 'px');
-
-    rm.innerHTML = `
-      <div class="map-room-head" title="Drag to move Browser · Double-click to zoom in">
-        <span class="rm-title"><span>🌐</span><span class="rm-name">${title}</span></span>
-        <span class="rm-dims">${w}×${h}</span>
-        <div class="rm-actions">
-          <button data-br-act="sleep" title="Toggle Auto-Sleep (Saves RAM/CPU)">🌙 Sleep</button>
-          <button data-br-act="native" title="Open URL in External Windows Browser">↗️</button>
-          <button data-br-act="zoom" title="Zoom into Browser">🔍</button>
-          <button data-br-act="close" title="Close Browser">×</button>
-        </div>
-      </div>
-      <div class="browser-nav-bar">
-        <button data-br-nav="back" title="Back">←</button>
-        <button data-br-nav="fwd" title="Forward">→</button>
-        <button data-br-nav="reload" title="Reload">⟳</button>
-        <input class="browser-addr-input" spellcheck="false" value="${initialUrl}">
-        <span class="browser-sleep-tag" style="display:none">💤 Asleep</span>
-      </div>
-      <div class="map-browser-body">
-        <iframe class="browser-island-frame" src="${initialUrl}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
-      </div>
-      <div class="rz-r" title="Drag to resize width"></div>
-      <div class="rz-b" title="Drag to resize height"></div>
-      <div class="rz-br" title="Drag to resize width & height">◢</div>
-    `;
-
-    const entry = { url: initialUrl, title, x: freePos.x, y: freePos.y, w, h, el: rm, isBrowser: true, isSleeping: false, lastActiveTime: Date.now() };
-    browserMap.set(rawKey, entry);
-    world.appendChild(rm);
-
-    rm.addEventListener('mousedown', () => {
-      wakeBrowserIsland(entry);
-      selectActiveRoom(rawKey);
-    });
-
-    const frame = rm.querySelector('iframe');
-    const addrInp = rm.querySelector('.browser-addr-input');
-    addrInp.onkeydown = e => {
-      if (e.key === 'Enter') {
-        let val = addrInp.value.trim();
-        if (!/^https?:\/\//i.test(val)) val = 'https://' + val;
-        entry.url = val;
-        entry.savedSrc = val;
-        wakeBrowserIsland(entry);
-        frame.src = val;
-      }
-    };
-    rm.querySelector('[data-br-nav="back"]').onclick = () => { try { frame.contentWindow.history.back(); } catch (_) {} };
-    rm.querySelector('[data-br-nav="fwd"]').onclick = () => { try { frame.contentWindow.history.forward(); } catch (_) {} };
-    rm.querySelector('[data-br-nav="reload"]').onclick = () => { wakeBrowserIsland(entry); frame.src = frame.src; };
-
-    rm.querySelector('[data-br-act="sleep"]').onclick = e => {
-      e.stopPropagation();
-      if (entry.isSleeping) wakeBrowserIsland(entry);
-      else sleepBrowserIsland(entry);
-    };
-    rm.querySelector('[data-br-act="native"]').onclick = e => {
-      e.stopPropagation();
-      window.api.open(entry.url);
-    };
-    rm.querySelector('[data-br-act="zoom"]').onclick = e => {
-      e.stopPropagation();
-      wakeBrowserIsland(entry);
-      selectActiveRoom(rawKey);
-      camZoom = 1.6;
-      camX = -entry.x * camZoom;
-      camY = -entry.y * camZoom;
-      updateCameraAndLens();
-    };
-    rm.querySelector('[data-br-act="close"]').onclick = e => {
-      e.stopPropagation();
-      delete layout.browserRooms[rawKey];
-      browserMap.delete(rawKey);
-      rm.remove();
-      updateCameraAndLens();
-      persist();
-    };
-
-    // Resizing
-    const wireBrResize = (handleEl, doW, doH) => {
-      handleEl.addEventListener('mousedown', ev => {
-        ev.stopPropagation(); ev.preventDefault();
-        wakeBrowserIsland(entry);
-        selectActiveRoom(rawKey);
-        const sx = ev.clientX, sy = ev.clientY;
-        const startW = entry.w, startH = entry.h;
-        const onMove = mv => {
-          if (doW) entry.w = Math.max(300, Math.min(2600, Math.round(startW + (mv.clientX - sx) / camZoom)));
-          if (doH) entry.h = Math.max(200, Math.min(1800, Math.round(startH + (mv.clientY - sy) / camZoom)));
-          rm.style.setProperty('--room-w', entry.w + 'px');
-          rm.style.setProperty('--room-h', entry.h + 'px');
-          rm.querySelector('.rm-dims').textContent = `${entry.w}×${entry.h}`;
-          layout.browserRooms[rawKey] = { ...(layout.browserRooms[rawKey] || {}), x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-        };
-        const onUp = () => {
-          window.removeEventListener('mousemove', onMove);
-          window.removeEventListener('mouseup', onUp);
-          updateCameraAndLens();
-          persist();
-        };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-      });
-    };
-    wireBrResize(rm.querySelector('.rz-r'), true, false);
-    wireBrResize(rm.querySelector('.rz-b'), false, true);
-    wireBrResize(rm.querySelector('.rz-br'), true, true);
-
-    // Dragging
-    const head = rm.querySelector('.map-room-head');
-    head.addEventListener('mousedown', ev => {
-      if (ev.target.tagName === 'BUTTON') return;
-      ev.stopPropagation();
-      wakeBrowserIsland(entry);
-      selectActiveRoom(rawKey);
-      const startMx = ev.clientX, startMy = ev.clientY;
-      const startRx = entry.x, startRy = entry.y;
-      const onMove = mv => {
-        const dx = (mv.clientX - startMx) / camZoom;
-        const dy = (mv.clientY - startMy) / camZoom;
-        entry.x = Math.round(startRx + dx);
-        entry.y = Math.round(startRy + dy);
-        rm.style.left = entry.x + 'px';
-        rm.style.top = entry.y + 'px';
-        layout.browserRooms[rawKey] = { ...(layout.browserRooms[rawKey] || {}), x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-        updateCameraAndLens();
-      };
-      const onUp = () => {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-        persist();
-      };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-    });
-
-    selectActiveRoom(rawKey);
-    updateCameraAndLens();
-    persist();
-    return entry;
-  }
-
   async function spawnTerminalIsland(targetDir = dir, name = 'Terminal', prefPos = null) {
     const termKey = 'terminal:' + targetDir;
     if (terminalMap.has(termKey)) {
@@ -3309,11 +3385,73 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
         plank.style.stroke = '#38bdf8'; // Cyan bridge for active open file/html/terminal island
         plank.style.strokeDasharray = '6 4';
         plank.style.strokeWidth = '3px';
+      } else if (c.roomColor) {
+        plank.style.stroke = c.roomColor;
       } else if (c.depth > 1) {
         plank.style.stroke = '#10b981'; // Constructive depth descent
       }
       bridgeSvg.append(casing, plank);
     }
+  }
+
+  // Rain Puddle Field & Random Room Ripple Engine
+  if (window._activePuddleTimer) {
+    clearTimeout(window._activePuddleTimer);
+    window._activePuddleTimer = null;
+  }
+  let activeRipplingRooms = 0;
+  function scheduleNextRaindrop() {
+    if (landscapePalette !== 'rain-puddle' || !document.body.contains(viewport)) return;
+    const minMs = Math.max(200, (parseFloat(puddleIntervalMin) || 2) * 1000);
+    const maxMs = Math.max(minMs + 200, (parseFloat(puddleIntervalMax) || 8) * 1000);
+    const delayMs = Math.round(minMs + Math.random() * (maxMs - minMs));
+
+    window._activePuddleTimer = setTimeout(() => {
+      if (landscapePalette !== 'rain-puddle' || !document.body.contains(viewport)) return;
+      const unlockedRooms = [...roomMap.values()].filter(r => !(lockFrame && lockBg) && !(r.lockFrame || r.lockBg) && !r.el.classList.contains('puddle-ripple-room'));
+      const maxConc = Math.max(1, parseInt(puddleMaxConcurrent, 10) || 4);
+      if (unlockedRooms.length > 0 && activeRipplingRooms < maxConc) {
+        const targetRm = unlockedRooms[Math.floor(Math.random() * unlockedRooms.length)];
+        const dropX = Math.round(targetRm.x + (Math.random() - 0.5) * 180);
+        const dropY = Math.round(targetRm.y + (Math.random() - 0.5) * 140);
+        const durSec = Math.max(1, parseFloat(puddleRippleDuration) || 5);
+
+        // 1. Spawn visual raindrop ripple wave on the 2D field
+        const ring = document.createElement('div');
+        ring.className = 'field-raindrop-ripple';
+        ring.style.left = dropX + 'px';
+        ring.style.top = dropY + 'px';
+        ring.style.setProperty('--puddle-duration', `${durSec}s`);
+        world.appendChild(ring);
+        setTimeout(() => ring.remove(), durSec * 1000 + 100);
+
+        // 2. Any unlocked room touched by the raindrop wave ripples in response
+        const hitRooms = unlockedRooms
+          .map(r => ({ r, dist: Math.hypot(r.x - dropX, r.y - dropY) }))
+          .filter(x => x.dist <= 440)
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, Math.max(1, maxConc - activeRipplingRooms));
+
+        for (const { r, dist } of hitRooms) {
+          const waveLagMs = Math.round((dist / 440) * 600);
+          activeRipplingRooms++;
+          setTimeout(() => {
+            if (!r.el || !document.body.contains(r.el)) { activeRipplingRooms = Math.max(0, activeRipplingRooms - 1); return; }
+            r.el.style.setProperty('--puddle-duration', `${durSec}s`);
+            r.el.classList.add('puddle-ripple-room');
+            if (breathAffectTiles) r.el.classList.add('affect-tiles');
+            setTimeout(() => {
+              r.el.classList.remove('puddle-ripple-room', 'affect-tiles');
+              activeRipplingRooms = Math.max(0, activeRipplingRooms - 1);
+            }, durSec * 1000);
+          }, waveLagMs);
+        }
+      }
+      scheduleNextRaindrop();
+    }, delayMs);
+  }
+  if (landscapePalette === 'rain-puddle') {
+    scheduleNextRaindrop();
   }
 
   // Two-Rectangle Edge Lens (Image 2):
@@ -3325,20 +3463,6 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     world.style.transform = `translate(${Math.round(cx + camX)}px, ${Math.round(cy + camY)}px) scale(${camZoom})`;
     hud.querySelector('.hud-coords').textContent = `Scale: ${Math.round(camZoom * 100)}% · Rooms: ${roomMap.size}${htmlMap.size ? ' · HTML: ' + htmlMap.size : ''}${fileViewerMap.size ? ' · Files: ' + fileViewerMap.size : ''}`;
 
-    // Auto-sleep off-screen browser islands to conserve memory
-    if (browserAutoSleep && browserMap.size > 0) {
-      for (const br of browserMap.values()) {
-        const sx = cx + camX + br.x * camZoom;
-        const sy = cy + camY + br.y * camZoom;
-        const isOffScreen = sx < -400 || sx > W + 400 || sy < -400 || sy > H + 400;
-        if (isOffScreen && !br.isSleeping) {
-          sleepBrowserIsland(br);
-        } else if (!isOffScreen && br.isSleeping) {
-          wakeBrowserIsland(br);
-        }
-      }
-    }
-
     const margin = 64;
     innerFrame.style.display = edgeLensOn ? 'block' : 'none';
     marginLayer.innerHTML = '';
@@ -3347,7 +3471,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     const innerL = margin, innerR = W - margin, innerT = margin, innerB = H - margin;
     const offRight = [], offLeft = [], offTop = [], offBottom = [];
 
-    for (const rm of [...roomMap.values(), ...htmlMap.values(), ...fileViewerMap.values(), ...browserMap.values(), ...terminalMap.values()]) {
+    for (const rm of [...roomMap.values(), ...htmlMap.values(), ...fileViewerMap.values(), ...terminalMap.values()]) {
       const sx = cx + camX + rm.x * camZoom;
       const sy = cy + camY + rm.y * camZoom;
       if (sx >= innerL && sx <= innerR && sy >= innerT && sy <= innerB) continue;
@@ -3578,8 +3702,8 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   let marqueeBasePaths = new Set();
 
   viewport.addEventListener('mousedown', e => {
-    // Universal Alt + Click (button 0 or 1) ANYWHERE pans the global camera!
-    const isAltPan = e.altKey && (e.button === 0 || e.button === 1);
+    // Universal Camera Pan hotkey (default Alt + Click) or Middle Click ANYWHERE pans the global camera!
+    const isAltPan = matchesModifiers(e, 'modCameraPan') && (e.button === 0 || e.button === 1);
     const isMiddlePan = e.button === 1;
 
     if (!isAltPan && !isMiddlePan) {
@@ -3673,10 +3797,18 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   // 2. Alt + Scroll: Resizes room file icons for the room under cursor!
   // 3. Normal Scroll: Scrolls room body, file viewers, and web browsers naturally without intercepting!
   viewport.addEventListener('wheel', e => {
+    // When Magnifier Loupe is active, scrolling adjusts Loupe magnification factor (1.4x .. 4.5x)!
+    if (loupeActive) {
+      e.preventDefault(); e.stopPropagation();
+      loupeMag = Math.max(1.4, Math.min(4.5, +(loupeMag + (e.deltaY < 0 ? 0.25 : -0.25)).toFixed(2)));
+      updateLoupePosition();
+      return;
+    }
+
     const targetRoomEl = e.target.closest('.map-room');
 
-    // Alt + Shift + Scroll over room: Scales physical room box width & height
-    if (targetRoomEl && e.altKey && e.shiftKey) {
+    // Room Box Width & Height Scale (default Alt + Shift + Scroll)
+    if (targetRoomEl && matchesModifiers(e, 'modRoomScale', true)) {
       e.preventDefault(); e.stopPropagation();
       const rPath = targetRoomEl.dataset.roomPath;
       const r = roomMap.get(rPath);
@@ -3694,8 +3826,8 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       return;
     }
 
-    // Alt + Scroll OR Ctrl + Scroll over room: Scales room indoor tiles, font, and icons natively via CSS zoom!
-    if (targetRoomEl && (e.altKey || (e.ctrlKey && !e.shiftKey))) {
+    // Indoor Room Tile & Icon Zoom (default Alt + Scroll or Ctrl + Scroll)
+    if (targetRoomEl && (matchesModifiers(e, 'modIndoorZoom', true) || (e.ctrlKey && !e.shiftKey && !e.altKey))) {
       e.preventDefault(); e.stopPropagation();
       const rPath = targetRoomEl.dataset.roomPath;
       const r = roomMap.get(rPath) || htmlMap.get(rPath) || fileViewerMap.get(rPath);
@@ -3723,7 +3855,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       return;
     }
 
-    if (e.shiftKey) {
+    if (matchesModifiers(e, 'modCameraZoom')) {
       e.preventDefault();
       const cr = viewport.getBoundingClientRect();
       const mx = (e.clientX - cr.left) - cr.width / 2;
@@ -3830,7 +3962,6 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
     fillMenu([
       { label: '➕ Spawn Folder from Disk here...', run: async () => { const f = await window.api.pickFolder(); if (f) await spawnFolderIsland(f, baseName(f), { x: clickWx, y: clickWy }); } },
-      { label: '🌐 Spawn Web Browser here...', run: () => spawnBrowserIsland('https://www.google.com', 'Web Browser', { x: clickWx, y: clickWy }) },
       { label: '📄 Spawn HTML Viewer here...', run: async () => { const h = await window.api.pickHtmlFile(); if (h) await spawnHtmlIsland(h, baseName(h), null, { x: clickWx, y: clickWy }); } },
       '-',
       { label: '⊞ Tidy / Auto-Arrange Rooms', run: () => hud.querySelector('[data-act="reset"]')?.click() },
@@ -3898,6 +4029,9 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       btn.classList.toggle('active', edgeLensOn);
       btn.textContent = `🖼️ Edge Lens: ${edgeLensOn ? 'ON' : 'OFF'}`;
       updateCameraAndLens();
+    } else if (act === 'loupe') {
+      loupePinned = !loupePinned;
+      setLoupeActive(loupePinned);
     }
   });
 
@@ -3961,12 +4095,16 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     }));
   }
 
-  // Restore any saved rooms that might be outside root subDirs (e.g. spawned arbitrary folders from disk)
-  for (const sp of savedPaths) {
+  // Restore any saved rooms outside root subDirs, sorted topologically by path depth so parent rooms ALWAYS spawn before child rooms!
+  const sortedSavedPaths = [...savedPaths].sort((a, b) => a.split(/[\\/]/).length - b.split(/[\\/]/).length);
+  for (const sp of sortedSavedPaths) {
     if (!roomMap.has(sp)) {
       const savedInfo = layout.rooms[sp];
       const name = baseName(sp);
-      await spawnRoom(sp, name, savedInfo?.parentPath || null, 1, { x: savedInfo?.x || 500, y: savedInfo?.y || 0 });
+      const parPath = savedInfo?.parentPath || (roomMap.has(parent(sp)) ? parent(sp) : null);
+      const parRm = parPath ? roomMap.get(parPath) : null;
+      const trueDepth = parRm ? (parRm.depth + 1) : 1;
+      await spawnRoom(sp, name, parPath, trueDepth, { x: savedInfo?.x || 500, y: savedInfo?.y || 0 });
     }
   }
 
@@ -4006,8 +4144,16 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   window.__spawnFolderIsland = spawnFolderIsland;
   window.__spawnHtmlIsland = spawnHtmlIsland;
   window.__spawnFileViewerIsland = spawnFileViewerIsland;
-  window.__spawnBrowserIsland = spawnBrowserIsland;
   window.__spawnTerminalIsland = spawnTerminalIsland;
+  window._landscapeState = {
+    roomMap,
+    layout,
+    viewport,
+    dir,
+    getActiveRoomPath: () => activeRoomPath,
+    syncDoorwayBadges,
+    drawBridges
+  };
 
   // 3. Run iterative AABB separation solver so zero rooms overlap even if saved positions collided!
   resolveRoomCollisions();
@@ -4075,8 +4221,9 @@ function renderHtmlTab(filePath, container) {
 
 async function renderGluonTopicSpace(targetUri, container) {
   container.innerHTML = '';
+  await ensureGluonLoaded();
   const planeFilter = targetUri.replace('peek://gluon', '').replace(/^\/+/, '').toUpperCase();
-  const targetPlane = (planeFilter && GluonEngine.PLANES[planeFilter]) ? planeFilter : null;
+  const targetPlane = (planeFilter && typeof GluonEngine !== 'undefined' && GluonEngine.PLANES[planeFilter]) ? planeFilter : null;
 
   const head = document.createElement('div');
   head.className = 'gluon-space-head';
@@ -4181,7 +4328,8 @@ async function show() {
   list.innerHTML = '';
   list.onmousemove = null;
   list.onmouseleave = null;
-  if (cur === HOME_URI) {
+  if (cur === HOME_URI || cur.startsWith('peek://browser')) {
+    if (cur.startsWith('peek://browser')) cur = HOME_URI;
     list.className = '';
     $('header').style.display = 'none';
     renderHomeDashboard(list);
@@ -4362,7 +4510,7 @@ function renderTabs() {
     el.draggable = true;
     const p = i === active ? cur : t.cur;
     const label = document.createElement('span');
-    label.textContent = (t.pinned ? '📌 ' : '') + (p === HOME_URI ? '🏠 Home' : (/\.html?$/i.test(p) ? '🌐 ' + baseName(p) : baseName(p)));
+    label.textContent = (t.pinned ? '📌 ' : '') + (p === HOME_URI ? '🏠 Home' : (p.startsWith('peek://browser') ? '🌐 Browser' : (/\.html?$/i.test(p) ? '🌐 ' + baseName(p) : baseName(p))));
     label.title = p + ' (Middle-click to close · Click ▾ to Split Left/Right/Up/Down · Right-click for options)';
     el.appendChild(label);
     const spDd = document.createElement('span'); spDd.className = 'split-dd'; spDd.textContent = '▾'; spDd.title = 'Split Tab Left / Right / Up / Down';
@@ -4405,21 +4553,49 @@ function renderTabs() {
     });
     el.addEventListener('dragstart', e => { e.dataTransfer.setData(MIME_TAB, String(i)); e.dataTransfer.effectAllowed = 'move'; });
     el.addEventListener('dragover', e => {
-      if (!e.dataTransfer.types.includes(MIME_TAB)) return;
-      e.preventDefault(); el.classList.add('drop-target');
+      if (e.dataTransfer.types.includes(MIME_TAB)) {
+        e.preventDefault(); el.classList.add('drop-target');
+      } else if (hasSupportedDrop(e.dataTransfer.types) && p && p !== HOME_URI && !p.startsWith('peek://')) {
+        e.preventDefault(); e.stopPropagation();
+        e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+        el.classList.add('drop-target');
+      }
     });
-    el.addEventListener('dragleave', () => el.classList.remove('drop-target'));
-    el.addEventListener('drop', e => {
+    el.addEventListener('dragleave', e => {
+      if (e.relatedTarget && el.contains(e.relatedTarget)) return;
       el.classList.remove('drop-target');
-      if (!e.dataTransfer.types.includes(MIME_TAB)) return;
-      e.preventDefault();
-      const from = +e.dataTransfer.getData(MIME_TAB);
-      if (from === i || isNaN(from)) return;
-      saveTab();
-      const [moved] = tabs.splice(from, 1);
-      tabs.splice(i, 0, moved);
-      active = active === from ? i : (from < active && i >= active ? active - 1 : (from > active && i <= active ? active + 1 : active));
-      renderTabs(); persist();
+    });
+    el.addEventListener('drop', async e => {
+      el.classList.remove('drop-target');
+      if (e.dataTransfer.types.includes(MIME_TAB)) {
+        e.preventDefault();
+        const from = +e.dataTransfer.getData(MIME_TAB);
+        if (from === i || isNaN(from)) return;
+        saveTab();
+        const [moved] = tabs.splice(from, 1);
+        tabs.splice(i, 0, moved);
+        active = active === from ? i : (from < active && i >= active ? active - 1 : (from > active && i <= active ? active + 1 : active));
+        renderTabs(); persist();
+        return;
+      }
+      if (hasSupportedDrop(e.dataTransfer.types) && p && p !== HOME_URI && !p.startsWith('peek://')) {
+        e.preventDefault(); e.stopPropagation();
+        let srcs = [];
+        if (e.dataTransfer.types.includes(MIME_PATHS)) {
+          try { srcs = JSON.parse(e.dataTransfer.getData(MIME_PATHS) || '[]'); } catch {}
+        }
+        if ((!srcs || !srcs.length) && activeDragPaths.length) srcs = [...activeDragPaths];
+        activeDragPaths = [];
+        if (!srcs.length) return;
+        const op = e.ctrlKey ? 'copy' : 'cut';
+        const r = await window.api.paste(op, srcs, p);
+        if (r.moved && r.moved.length) {
+          undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+          $('status').textContent = `✓ Moved ${r.moved.length} item${r.moved.length > 1 ? 's' : ''} → Tab "${baseName(p)}"`;
+        }
+        if (r.skipped && r.skipped.length) alert('Skipped:\n' + r.skipped.join('\n'));
+        show();
+      }
     });
     bar.appendChild(el);
   });
@@ -4479,7 +4655,7 @@ function persist() {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     saveTab();
-    const s = { view: mode, folderViews, landscapePalette, landscapeBg, landscapeBgColor, landscapeBgImage, defaultFrameColor, defaultBgColor, roomBgOpacity, roomGlowIntensity, breathTargetColor, activeRoomBorderColor, browserAutoSleep, autoSummarize, breathingDuration, lockFrame, lockBg, holdRenameEnabled, holdRenameDelay, sortKey, sortAsc, groupKey, colWidths, showPreview, darkMode, showHidden, showExt, showChecks, newTabTarget, scripts, bookmarks, recentFolders, landscapeLayout, splitRatio };
+    const s = { view: mode, folderViews, landscapePalette, modePaletteIndex, customPaletteColors, inheritShiftMode, landscapeBg, landscapeBgColor, landscapeBgImage, canvasReactMode, accentColor, hotkeys, defaultFrameColor, defaultBgColor, roomBgOpacity, roomGlowIntensity, roomGlowRange, breathTargetColor, breathTargetBgColor, breathScaleSize, breathAffectTiles, puddleIntervalMin, puddleIntervalMax, puddleRippleDuration, puddleMaxConcurrent, activeRoomBorderColor, selectedFolderColor, useCustomSelectedFolder, browserAutoSleep, autoSummarize, breathingDuration, lockFrame, lockBg, holdRenameEnabled, holdRenameDelay, sortKey, sortAsc, groupKey, colWidths, showPreview, darkMode, showHidden, showExt, showChecks, newTabTarget, scripts, bookmarks, recentFolders, landscapeLayout, splitRatio };
     if (isPrimary) s.session = { tabs, active };
     window.api.saveSettings(s);
   }, 300);
@@ -4491,6 +4667,7 @@ function goForward() { if (hi < hist.length - 1) { hi++; go(hist[hi], false); } 
 $('back').onclick = goBack;
 $('fwd').onclick = goForward;
 $('up').onclick = () => go(parent(cur));
+wireDropTarget($('up'), () => parent(cur));
 $('homeBtn').onclick = () => go(HOME_URI);
 $('refresh').onclick = show;
 
@@ -4659,15 +4836,46 @@ function renderBookmarksNav() {
   const settings = await window.api.getSettings();
   if (settings.folderViews && typeof settings.folderViews === 'object') { folderViews = { ...settings.folderViews }; }
   if (settings.landscapePalette) landscapePalette = settings.landscapePalette;
+  if (settings.modePaletteIndex && typeof settings.modePaletteIndex === 'object' && !Array.isArray(settings.modePaletteIndex)) {
+    modePaletteIndex = { ...modePaletteIndex, ...settings.modePaletteIndex };
+  }
+  if (settings.customPaletteColors && typeof settings.customPaletteColors === 'object' && !Array.isArray(settings.customPaletteColors)) {
+    customPaletteColors = { ...customPaletteColors, ...settings.customPaletteColors };
+  }
+  if (settings.inheritShiftMode) inheritShiftMode = settings.inheritShiftMode;
   if (settings.landscapeBg) landscapeBg = settings.landscapeBg;
   if (settings.landscapeBgColor) landscapeBgColor = settings.landscapeBgColor;
   if (settings.landscapeBgImage) landscapeBgImage = settings.landscapeBgImage;
+  if (typeof settings.canvasReactMode === 'boolean') canvasReactMode = settings.canvasReactMode;
+  if (settings.accentColor) {
+    accentColor = settings.accentColor;
+    document.documentElement.style.setProperty('--accent', accentColor);
+  }
+  if (settings.hotkeys && typeof settings.hotkeys === 'object') {
+    hotkeys = { ...DEFAULT_HOTKEYS, ...settings.hotkeys };
+  }
   if (settings.defaultFrameColor) defaultFrameColor = settings.defaultFrameColor;
   if (settings.defaultBgColor) defaultBgColor = settings.defaultBgColor;
   if (typeof settings.roomBgOpacity === 'number') roomBgOpacity = settings.roomBgOpacity;
-  if (typeof settings.roomGlowIntensity === 'number') roomGlowIntensity = settings.roomGlowIntensity;
+  if (typeof settings.roomGlowIntensity === 'number') {
+    roomGlowIntensity = settings.roomGlowIntensity;
+    document.documentElement.style.setProperty('--room-glow-intensity', roomGlowIntensity / 100);
+  }
+  if (typeof settings.roomGlowRange === 'number') {
+    roomGlowRange = settings.roomGlowRange;
+    document.documentElement.style.setProperty('--room-glow-range', `${roomGlowRange}px`);
+  }
   if (settings.breathTargetColor) breathTargetColor = settings.breathTargetColor;
+  if (settings.breathTargetBgColor) breathTargetBgColor = settings.breathTargetBgColor;
+  if (typeof settings.breathScaleSize === 'number') breathScaleSize = settings.breathScaleSize;
+  if (typeof settings.breathAffectTiles === 'boolean') breathAffectTiles = settings.breathAffectTiles;
+  if (typeof settings.puddleIntervalMin === 'number') puddleIntervalMin = settings.puddleIntervalMin;
+  if (typeof settings.puddleIntervalMax === 'number') puddleIntervalMax = settings.puddleIntervalMax;
+  if (typeof settings.puddleRippleDuration === 'number') puddleRippleDuration = settings.puddleRippleDuration;
+  if (typeof settings.puddleMaxConcurrent === 'number') puddleMaxConcurrent = settings.puddleMaxConcurrent;
   if (settings.activeRoomBorderColor) activeRoomBorderColor = settings.activeRoomBorderColor;
+  if (settings.selectedFolderColor) selectedFolderColor = settings.selectedFolderColor;
+  if (typeof settings.useCustomSelectedFolder === 'boolean') useCustomSelectedFolder = settings.useCustomSelectedFolder;
   if (typeof settings.browserAutoSleep === 'boolean') browserAutoSleep = settings.browserAutoSleep;
   if (typeof settings.autoSummarize === 'boolean') autoSummarize = settings.autoSummarize;
   if (typeof settings.breathingDuration === 'number') breathingDuration = settings.breathingDuration;
@@ -4942,6 +5150,10 @@ async function showMenu(x, y, it) {
   const isScript = !multi && !it.isDir && SCRIPT_EXT.test(it.name);
   const isZip = !multi && !it.isDir && ZIP_EXT.test(it.name);
 
+  const subDirsInCur = [...$('list').querySelectorAll('.row.item[data-is-dir="1"], .room-item.is-dir')]
+    .map(el => el._item)
+    .filter(d => d && d.isDir && !paths.includes(d.path));
+
   fillMenu([
     ...(!multi ? [
       { label: 'Open', run: () => it.isDir ? go(it.path) : (/\.html?$/i.test(it.name) ? newTab(it.path, [], true) : window.api.open(it.path)) },
@@ -4969,6 +5181,58 @@ async function showMenu(x, y, it) {
       { label: 'Show in Windows Explorer', run: () => window.api.showInFolder(it.path) },
       '-'
     ] : []),
+    {
+      label: `📂 Move to Folder${countTag}  ›`,
+      keepOpen: true,
+      run: () => {
+        const moveTargets = [];
+        const parDir = parent(cur);
+        if (parDir && parDir !== HOME_URI && !parDir.startsWith('peek://')) {
+          moveTargets.push({ label: `⬆️  Parent Folder (${baseName(parDir)})`, dest: parDir });
+        }
+        if (splitState.active && splitState.cur && splitState.cur !== HOME_URI && splitState.cur !== cur) {
+          moveTargets.push({ label: `◫  Split Pane (${baseName(splitState.cur)})`, dest: splitState.cur });
+        }
+        for (const sd of subDirsInCur.slice(0, 14)) {
+          moveTargets.push({ label: `📁  ${sd.name}`, dest: sd.path });
+        }
+        for (const bm of bookmarks.slice(0, 6)) {
+          if (bm.path !== cur) moveTargets.push({ label: `⭐  ${bm.name}`, dest: bm.path });
+        }
+        const menuItems = moveTargets.map(mt => ({
+          label: mt.label,
+          run: async () => {
+            const r = await window.api.paste('cut', paths, mt.dest);
+            if (r.moved && r.moved.length) {
+              undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+              $('status').textContent = `✓ Moved ${r.moved.length} item${r.moved.length > 1 ? 's' : ''} → "${baseName(mt.dest)}" (Ctrl+Z to undo)`;
+            }
+            if (r.skipped && r.skipped.length) alert('Skipped:\n' + r.skipped.join('\n'));
+            show();
+            if (splitState.active) renderSplitPane();
+          }
+        }));
+        if (moveTargets.length) menuItems.push('-');
+        menuItems.push({
+          label: '🔍  Choose another folder…',
+          run: async () => {
+            const picked = await window.api.pickFolder();
+            if (!picked) return;
+            const r = await window.api.paste('cut', paths, picked);
+            if (r.moved && r.moved.length) {
+              undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+              $('status').textContent = `✓ Moved ${r.moved.length} item${r.moved.length > 1 ? 's' : ''} → "${baseName(picked)}" (Ctrl+Z to undo)`;
+            }
+            if (r.skipped && r.skipped.length) alert('Skipped:\n' + r.skipped.join('\n'));
+            show();
+            if (splitState.active) renderSplitPane();
+          }
+        });
+        fillMenu(menuItems);
+        placeMenu(parseInt(menuEl.style.left), parseInt(menuEl.style.top));
+      }
+    },
+    '-',
     ...(scripts.length ? [
       {
         label: `⚡ Run Script Connection${countTag}  ›`,
@@ -5074,12 +5338,13 @@ function getGridStride() {
 }
 
 document.addEventListener('keydown', async e => {
-  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 't') { e.preventDefault(); reopenClosedTab(); return; }
-  if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 't') { e.preventDefault(); newTab(); return; }
-  if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w') { e.preventDefault(); closeTab(active); return; }
-  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); createAndRename(() => window.api.newFolder(cur)); return; }
-  if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); window.api.newWindow(cur); return; }
-  if (e.ctrlKey && e.key === '`') {
+  if (document.querySelector('.hotkey-bind-btn.recording')) return;
+  if (matchesHotkey(e, 'reopenTab')) { e.preventDefault(); reopenClosedTab(); return; }
+  if (matchesHotkey(e, 'newTab')) { e.preventDefault(); newTab(); return; }
+  if (matchesHotkey(e, 'closeTab')) { e.preventDefault(); closeTab(active); return; }
+  if (matchesHotkey(e, 'newFolder')) { e.preventDefault(); createAndRename(() => window.api.newFolder(cur)); return; }
+  if (matchesHotkey(e, 'newWindow')) { e.preventDefault(); window.api.newWindow(cur); return; }
+  if (matchesHotkey(e, 'toggleTerminal')) {
     e.preventDefault();
     const d = $('termDrawer');
     if (d) {
@@ -5098,11 +5363,11 @@ document.addEventListener('keydown', async e => {
   }
   if (e.ctrlKey && e.key === 'Tab') { e.preventDefault(); switchTab((active + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length); return; }
   if (e.ctrlKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); switchTab(Math.min(+e.key - 1, tabs.length - 1)); return; }
-  if ((e.ctrlKey && e.key.toLowerCase() === 'l') || (e.altKey && e.key.toLowerCase() === 'd')) { e.preventDefault(); startAddressEdit(); return; }
-  if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); return; }
-  if (e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); $('previewBtn').click(); return; }
-  if (e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); splitState.active ? closeSplit() : activateSplit('right', cur); return; }
-  if (e.altKey && e.key === 'Home') { e.preventDefault(); go(HOME_URI); return; }
+  if (matchesHotkey(e, 'focusAddress') || (e.altKey && e.key.toLowerCase() === 'd')) { e.preventDefault(); startAddressEdit(); return; }
+  if (matchesHotkey(e, 'focusSearch')) { e.preventDefault(); $('search').focus(); $('search').select(); return; }
+  if (matchesHotkey(e, 'togglePreview')) { e.preventDefault(); $('previewBtn').click(); return; }
+  if (matchesHotkey(e, 'toggleSplit')) { e.preventDefault(); splitState.active ? closeSplit() : activateSplit('right', cur); return; }
+  if (matchesHotkey(e, 'goHome')) { e.preventDefault(); go(HOME_URI); return; }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
   const rows = visibleRows();
@@ -5113,9 +5378,9 @@ document.addEventListener('keydown', async e => {
   const isGridMode = ['medium', 'large', 'xl', 'tiles', 'small'].includes(mode);
   const stride = isGridMode ? getGridStride() : 1;
 
-  if (e.key === 'F2' && selected.size > 1) { showPreview = true; applyPreviewPane(); }
-  else if (e.key === 'F2' && first) startRename(first.item, first.cell);
-  else if (e.key === 'F5') refreshKeep();
+  if (matchesHotkey(e, 'rename') && selected.size > 1) { showPreview = true; applyPreviewPane(); }
+  else if (matchesHotkey(e, 'rename') && first) startRename(first.item, first.cell);
+  else if (matchesHotkey(e, 'refresh')) refreshKeep();
   else if (e.key === 'Delete' && selected.size) {
     e.preventDefault();
     if (e.shiftKey) doPermanentDelete([...selected.keys()]);
@@ -5197,12 +5462,82 @@ document.addEventListener('keydown', async e => {
   const settingsSaveBtn = $('settingsSaveBtn');
 
   if (settingsBtn && settingsBackdrop) {
+    function getLsRoomMap() {
+      return window._landscapeState?.roomMap || null;
+    }
+    function getLsLayout() {
+      return window._landscapeState?.layout || (landscapeLayout[cur] || null);
+    }
+    function refreshLandscapeLive() {
+      if (mode === 'landscape') show();
+    }
+
     function syncSpecificRoomControls(path) {
-      const r = path && typeof roomMap !== 'undefined' ? roomMap.get(path) : null;
+      const rmMap = getLsRoomMap();
+      const r = path && rmMap ? rmMap.get(path) : null;
       if ($('setSpecificFrameColor')) $('setSpecificFrameColor').value = (r && r.roomColor && r.roomColor.startsWith('#')) ? r.roomColor : defaultFrameColor;
       if ($('setSpecificBgColor')) $('setSpecificBgColor').value = (r && r.roomBgColor && r.roomBgColor.startsWith('#')) ? r.roomBgColor : defaultBgColor;
       if ($('setSpecificLockFrame')) $('setSpecificLockFrame').checked = r ? !!r.lockFrame : false;
       if ($('setSpecificLockBg')) $('setSpecificLockBg').checked = r ? !!r.lockBg : false;
+    }
+
+    function syncHotkeyButtons() {
+      settingsBackdrop.querySelectorAll('.hotkey-bind-btn').forEach(btn => {
+        const hk = btn.dataset.hk;
+        btn.classList.remove('recording');
+        btn.textContent = hotkeys[hk] || DEFAULT_HOTKEYS[hk] || 'Unbound';
+      });
+    }
+
+    function populateSubPaletteDropdown(m) {
+      const sel = $('setModeSubPalette');
+      if (!sel) return;
+      const modePals = MODE_PALETTES[m];
+      if (!modePals) {
+        if ($('setModeSubPaletteRow')) $('setModeSubPaletteRow').style.display = 'none';
+        if ($('setCustomPaletteSwatchesRow')) $('setCustomPaletteSwatchesRow').style.display = 'none';
+        return;
+      }
+      if ($('setModeSubPaletteRow')) $('setModeSubPaletteRow').style.display = 'flex';
+      sel.innerHTML = '';
+      modePals.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+      const custOpt = document.createElement('option');
+      custOpt.value = '5';
+      custOpt.textContent = '6. Custom Palette (7 Swatches)';
+      sel.appendChild(custOpt);
+      const curIdx = getModePaletteIdx(m);
+      sel.value = String(curIdx);
+      syncCustomSwatchInputs(m, curIdx);
+    }
+
+    function syncCustomSwatchInputs(m, palIdx) {
+      const row = $('setCustomPaletteSwatchesRow');
+      if (!row) return;
+      row.style.display = Number(palIdx) === 5 ? 'flex' : 'none';
+      const baseColors = getModeCustomSwatches(m);
+      for (let i = 0; i < 7; i++) {
+        const inp = $('setCustomSwatch' + i);
+        if (inp) inp.value = baseColors[i] || '#3b82f6';
+      }
+    }
+
+    function syncPaletteModeRows(palVal) {
+      populateSubPaletteDropdown(palVal);
+      if ($('setInheritShiftRow')) $('setInheritShiftRow').style.display = palVal === 'inherit' ? 'flex' : 'none';
+      const isBreath = palVal === 'breathing';
+      const isPuddle = palVal === 'rain-puddle';
+      const isBreathOrPuddle = isBreath || isPuddle;
+      const hasCyclePace = isBreath || palVal === 'rainbow-sync' || palVal === 'rainbow-async' || palVal === 'rainbow-wave';
+      if ($('setBreathDurationRow')) $('setBreathDurationRow').style.display = hasCyclePace ? 'flex' : 'none';
+      if ($('setBreathScaleRow')) $('setBreathScaleRow').style.display = isBreathOrPuddle ? 'flex' : 'none';
+      if ($('setBreathTargetRow')) $('setBreathTargetRow').style.display = isBreathOrPuddle ? 'flex' : 'none';
+      if ($('setBreathAffectTilesRow')) $('setBreathAffectTilesRow').style.display = isBreathOrPuddle ? 'flex' : 'none';
+      if ($('setRainPuddleGroup')) $('setRainPuddleGroup').style.display = isPuddle ? 'flex' : 'none';
     }
 
     settingsBtn.onclick = () => {
@@ -5210,10 +5545,13 @@ document.addEventListener('keydown', async e => {
       if ($('setShowExt')) $('setShowExt').checked = showExt;
       if ($('setShowHidden')) $('setShowHidden').checked = showHidden;
       if ($('setShowChecks')) $('setShowChecks').checked = showChecks;
+      if ($('setAccentColor')) $('setAccentColor').value = accentColor || '#0067c0';
       if ($('setLandscapeBg')) $('setLandscapeBg').value = landscapeBg;
       if ($('setCanvasColorPicker')) $('setCanvasColorPicker').value = landscapeBgColor;
       if ($('setCanvasImageUrl')) $('setCanvasImageUrl').value = landscapeBgImage;
+      if ($('setCanvasReactMode')) $('setCanvasReactMode').checked = !!canvasReactMode;
       if ($('setRoomPalette')) $('setRoomPalette').value = landscapePalette;
+      if ($('setInheritShiftMode')) $('setInheritShiftMode').value = inheritShiftMode || 'lighter';
       if ($('setAutoSleep')) $('setAutoSleep').checked = browserAutoSleep;
       if ($('setAutoSummarize')) $('setAutoSummarize').checked = autoSummarize;
       if ($('setDefaultFrameColor')) $('setDefaultFrameColor').value = defaultFrameColor;
@@ -5222,8 +5560,25 @@ document.addEventListener('keydown', async e => {
       if ($('setRoomBgOpacityVal')) $('setRoomBgOpacityVal').textContent = roomBgOpacity + '%';
       if ($('setRoomGlow')) $('setRoomGlow').value = roomGlowIntensity;
       if ($('setRoomGlowVal')) $('setRoomGlowVal').textContent = roomGlowIntensity + '%';
+      if ($('setRoomGlowRange')) $('setRoomGlowRange').value = roomGlowRange;
+      if ($('setRoomGlowRangeNum')) $('setRoomGlowRangeNum').value = roomGlowRange;
       if ($('setBreathTargetColor')) $('setBreathTargetColor').value = breathTargetColor || '#ffffff';
+      if ($('setBreathTargetBgColor')) $('setBreathTargetBgColor').value = breathTargetBgColor || '#334155';
+      if ($('setBreathScale')) $('setBreathScale').value = breathScaleSize;
+      if ($('setBreathScaleNum')) $('setBreathScaleNum').value = breathScaleSize;
+      if ($('setBreathAffectTiles')) $('setBreathAffectTiles').checked = breathAffectTiles;
+      if ($('setPuddleMin')) $('setPuddleMin').value = puddleIntervalMin;
+      if ($('setPuddleMax')) $('setPuddleMax').value = puddleIntervalMax;
+      if ($('setPuddleDuration')) $('setPuddleDuration').value = Math.min(360, puddleRippleDuration);
+      if ($('setPuddleDurationNum')) $('setPuddleDurationNum').value = puddleRippleDuration;
+      if ($('setPuddleMaxConcurrent')) $('setPuddleMaxConcurrent').value = Math.min(50, puddleMaxConcurrent);
+      if ($('setPuddleMaxConcurrentNum')) $('setPuddleMaxConcurrentNum').value = puddleMaxConcurrent;
       if ($('setActiveRoomColor')) $('setActiveRoomColor').value = activeRoomBorderColor;
+      if ($('setUseCustomSelectedFolder')) $('setUseCustomSelectedFolder').checked = useCustomSelectedFolder;
+      if ($('setSelectedFolderColor')) {
+        $('setSelectedFolderColor').value = selectedFolderColor || '#0078d4';
+        $('setSelectedFolderColor').disabled = false; // Always clickable!
+      }
       if ($('setBreathDuration')) $('setBreathDuration').value = Math.min(360, breathingDuration);
       if ($('setBreathDurationNum')) $('setBreathDurationNum').value = breathingDuration;
       if ($('setLockFrame')) $('setLockFrame').checked = lockFrame;
@@ -5232,26 +5587,29 @@ document.addEventListener('keydown', async e => {
       if ($('setHoldRenameDelay')) $('setHoldRenameDelay').value = holdRenameDelay;
       if ($('setHoldRenameDelayVal')) $('setHoldRenameDelayVal').textContent = holdRenameDelay + 'ms';
 
+      syncHotkeyButtons();
+
       // Specific Room Customizer Dropdown
       const roomSel = $('setSpecificRoomSelect');
+      const rmMap = getLsRoomMap();
       if (roomSel) {
         roomSel.innerHTML = '<option value="">(Select or Click any Room)</option>';
-        if (typeof roomMap !== 'undefined') {
-          for (const rm of roomMap.values()) {
+        if (rmMap) {
+          for (const rm of rmMap.values()) {
             const opt = document.createElement('option');
             opt.value = rm.path;
             opt.textContent = `${rm.depth === 0 ? '🏰 ' : '🏝️ '}${rm.name}`;
             roomSel.appendChild(opt);
           }
         }
-        const targetPath = (typeof activeRoomPath !== 'undefined' && activeRoomPath && typeof roomMap !== 'undefined' && roomMap.has(activeRoomPath)) ? activeRoomPath : '';
+        const actPath = window._landscapeState?.getActiveRoomPath?.() || '';
+        const targetPath = (actPath && rmMap && rmMap.has(actPath)) ? actPath : '';
         roomSel.value = targetPath;
         syncSpecificRoomControls(targetPath);
       }
 
       const palVal = $('setRoomPalette')?.value || landscapePalette;
-      if ($('setBreathDurationRow')) $('setBreathDurationRow').style.display = palVal === 'breathing' ? 'flex' : 'none';
-      if ($('setBreathTargetRow')) $('setBreathTargetRow').style.display = palVal === 'breathing' ? 'flex' : 'none';
+      syncPaletteModeRows(palVal);
       if ($('setHoldRenameDelayRow')) $('setHoldRenameDelayRow').style.display = holdRenameEnabled ? 'flex' : 'none';
 
       const bgVal = $('setLandscapeBg')?.value;
@@ -5273,44 +5631,264 @@ document.addEventListener('keydown', async e => {
       };
     });
 
+    // Interactive Hotkey Rebinding
+    settingsBackdrop.querySelectorAll('.hotkey-bind-btn').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        settingsBackdrop.querySelectorAll('.hotkey-bind-btn.recording').forEach(b => {
+          if (b !== btn) {
+            b.classList.remove('recording');
+            b.textContent = hotkeys[b.dataset.hk] || DEFAULT_HOTKEYS[b.dataset.hk] || 'Unbound';
+          }
+        });
+        const hk = btn.dataset.hk;
+        const modOnly = btn.dataset.modOnly === 'true';
+        btn.classList.add('recording');
+        btn.textContent = modOnly ? 'Hold Modifiers… (Esc cancel)' : 'Press Shortcut… (Esc cancel)';
+
+        let lastModCombo = '';
+        const cleanup = () => {
+          window.removeEventListener('keydown', onRecDown, true);
+          window.removeEventListener('keyup', onRecUp, true);
+          btn.classList.remove('recording');
+        };
+        const onRecDown = ev => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (ev.key === 'Escape') {
+            cleanup();
+            btn.textContent = hotkeys[hk] || DEFAULT_HOTKEYS[hk];
+            return;
+          }
+          if (modOnly) {
+            const mods = [];
+            if (ev.ctrlKey || ev.key === 'Control') mods.push('Ctrl');
+            if (ev.altKey || ev.key === 'Alt') mods.push('Alt');
+            if (ev.shiftKey || ev.key === 'Shift') mods.push('Shift');
+            if (mods.length) {
+              lastModCombo = mods.join('+');
+              btn.textContent = lastModCombo + ' (release to set)';
+            }
+          } else {
+            if (['Control', 'Alt', 'Shift', 'Meta'].includes(ev.key)) return;
+            const combo = eventToCombo(ev);
+            if (combo) {
+              hotkeys[hk] = combo;
+              cleanup();
+              btn.textContent = combo;
+              persist();
+            }
+          }
+        };
+        const onRecUp = ev => {
+          if (!modOnly) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (lastModCombo) {
+            hotkeys[hk] = lastModCombo;
+            cleanup();
+            btn.textContent = lastModCombo;
+            persist();
+          }
+        };
+        window.addEventListener('keydown', onRecDown, true);
+        window.addEventListener('keyup', onRecUp, true);
+      };
+    });
+
+    $('resetAllHotkeysBtn')?.addEventListener('click', () => {
+      hotkeys = { ...DEFAULT_HOTKEYS };
+      syncHotkeyButtons();
+      persist();
+    });
+
+    $('setAccentColor')?.addEventListener('input', e => {
+      accentColor = e.target.value || '#0067c0';
+      document.documentElement.style.setProperty('--accent', accentColor);
+      persist();
+    });
+
     $('setLandscapeBg')?.addEventListener('change', e => {
       const v = e.target.value;
+      landscapeBg = v;
       if ($('setCustomColorRow')) $('setCustomColorRow').style.display = v === 'custom-color' ? 'flex' : 'none';
       if ($('setCustomImageRow')) $('setCustomImageRow').style.display = v === 'custom-image' ? 'flex' : 'none';
+      refreshLandscapeLive();
+      persist();
+    });
+    $('setCanvasColorPicker')?.addEventListener('input', e => {
+      landscapeBgColor = e.target.value;
+      refreshLandscapeLive();
+    });
+    $('setCanvasImageUrl')?.addEventListener('change', e => {
+      landscapeBgImage = e.target.value;
+      refreshLandscapeLive();
+    });
+    $('setCanvasReactMode')?.addEventListener('change', e => {
+      canvasReactMode = !!e.target.checked;
+      refreshLandscapeLive();
+      persist();
     });
 
     $('setRoomPalette')?.addEventListener('change', e => {
-      const isBreath = e.target.value === 'breathing';
-      if ($('setBreathDurationRow')) $('setBreathDurationRow').style.display = isBreath ? 'flex' : 'none';
-      if ($('setBreathTargetRow')) $('setBreathTargetRow').style.display = isBreath ? 'flex' : 'none';
+      landscapePalette = e.target.value;
+      syncPaletteModeRows(landscapePalette);
+      refreshLandscapeLive();
+      persist();
+    });
+    $('setInheritShiftMode')?.addEventListener('change', e => {
+      inheritShiftMode = e.target.value || 'lighter';
+      refreshLandscapeLive();
+      persist();
+    });
+    $('setModeSubPalette')?.addEventListener('change', e => {
+      const m = $('setRoomPalette')?.value || landscapePalette;
+      const idx = parseInt(e.target.value) || 0;
+      if (typeof modePaletteIndex !== 'object' || modePaletteIndex === null) modePaletteIndex = {};
+      modePaletteIndex[m] = idx;
+      syncCustomSwatchInputs(m, idx);
+      refreshLandscapeLive();
+      persist();
+    });
+    for (let i = 0; i < 7; i++) {
+      $('setCustomSwatch' + i)?.addEventListener('input', () => {
+        const m = $('setRoomPalette')?.value || landscapePalette;
+        const arr = [];
+        for (let k = 0; k < 7; k++) arr.push($('setCustomSwatch' + k)?.value || '#3b82f6');
+        if (typeof customPaletteColors !== 'object' || customPaletteColors === null || Array.isArray(customPaletteColors)) customPaletteColors = {};
+        customPaletteColors[m] = arr;
+        refreshLandscapeLive();
+      });
+    }
+    $('setDefaultFrameColor')?.addEventListener('input', e => {
+      defaultFrameColor = e.target.value || '#0067c0';
+      refreshLandscapeLive();
+    });
+    $('setDefaultBgColor')?.addEventListener('input', e => {
+      defaultBgColor = e.target.value || '#1e293b';
+      refreshLandscapeLive();
+    });
+    $('setBreathTargetColor')?.addEventListener('input', e => {
+      breathTargetColor = e.target.value || '#ffffff';
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) {
+        vp.style.setProperty('--breath-target', breathTargetColor);
+        vp.style.setProperty('--breath-glow', colorToRgba(breathTargetColor, 0.8));
+      }
+    });
+    $('setBreathTargetBgColor')?.addEventListener('input', e => {
+      breathTargetBgColor = e.target.value || '#334155';
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) vp.style.setProperty('--breath-target-bg', colorToRgba(breathTargetBgColor, roomBgOpacity / 100));
+    });
+    $('setBreathAffectTiles')?.addEventListener('change', e => {
+      breathAffectTiles = !!e.target.checked;
+      refreshLandscapeLive();
+      persist();
+    });
+    $('setActiveRoomColor')?.addEventListener('input', e => {
+      activeRoomBorderColor = e.target.value || '#00f0ff';
+      document.documentElement.style.setProperty('--active-room-border', activeRoomBorderColor);
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) {
+        vp.style.setProperty('--active-room-border', activeRoomBorderColor);
+        vp.style.setProperty('--active-border-color', activeRoomBorderColor);
+      }
+    });
+    $('setUseCustomSelectedFolder')?.addEventListener('change', e => {
+      useCustomSelectedFolder = !!e.target.checked;
+      window._landscapeState?.syncDoorwayBadges?.();
+      persist();
+    });
+    $('setSelectedFolderColor')?.addEventListener('input', e => {
+      selectedFolderColor = e.target.value || '#0078d4';
+      useCustomSelectedFolder = true;
+      if ($('setUseCustomSelectedFolder')) $('setUseCustomSelectedFolder').checked = true;
+      window._landscapeState?.syncDoorwayBadges?.();
     });
     $('setRoomGlow')?.addEventListener('input', e => {
       const val = parseInt(e.target.value) || 0;
+      roomGlowIntensity = val;
       if ($('setRoomGlowVal')) $('setRoomGlowVal').textContent = val + '%';
       document.documentElement.style.setProperty('--room-glow-intensity', val / 100);
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) vp.style.setProperty('--room-glow-intensity', val / 100);
+    });
+    $('setRoomGlowRange')?.addEventListener('input', e => {
+      const val = parseInt(e.target.value) || 0;
+      roomGlowRange = val;
+      if ($('setRoomGlowRangeNum')) $('setRoomGlowRangeNum').value = val;
+      document.documentElement.style.setProperty('--room-glow-range', `${val}px`);
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) vp.style.setProperty('--room-glow-range', `${val}px`);
+    });
+    $('setRoomGlowRangeNum')?.addEventListener('input', e => {
+      const val = Math.max(0, parseInt(e.target.value) || 0);
+      roomGlowRange = val;
+      if ($('setRoomGlowRange')) $('setRoomGlowRange').value = Math.min(100, val);
+      document.documentElement.style.setProperty('--room-glow-range', `${val}px`);
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) vp.style.setProperty('--room-glow-range', `${val}px`);
+    });
+    $('setBreathScale')?.addEventListener('input', e => {
+      const val = parseInt(e.target.value) || 0;
+      breathScaleSize = val;
+      if ($('setBreathScaleNum')) $('setBreathScaleNum').value = val;
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) vp.style.setProperty('--breath-scale', `${val}px`);
+    });
+    $('setBreathScaleNum')?.addEventListener('input', e => {
+      const val = Math.max(0, parseInt(e.target.value) || 0);
+      breathScaleSize = val;
+      if ($('setBreathScale')) $('setBreathScale').value = Math.min(80, val);
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
+      if (vp) vp.style.setProperty('--breath-scale', `${val}px`);
     });
     $('setBreathDuration')?.addEventListener('input', e => {
       const val = parseInt(e.target.value) || 6;
       breathingDuration = val;
       if ($('setBreathDurationNum')) $('setBreathDurationNum').value = val;
-      const vp = $('landscape') || document.querySelector('.landscape-viewport');
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
       if (vp) vp.style.setProperty('--breath-duration', `${val}s`);
     });
     $('setBreathDurationNum')?.addEventListener('input', e => {
       const val = Math.max(1, parseInt(e.target.value) || 1);
       breathingDuration = val;
       if ($('setBreathDuration')) $('setBreathDuration').value = Math.min(360, val);
-      const vp = $('landscape') || document.querySelector('.landscape-viewport');
+      const vp = window._landscapeState?.viewport || document.querySelector('.landscape-viewport');
       if (vp) vp.style.setProperty('--breath-duration', `${val}s`);
+    });
+    $('setPuddleDuration')?.addEventListener('input', e => {
+      const val = parseFloat(e.target.value) || 5;
+      puddleRippleDuration = val;
+      if ($('setPuddleDurationNum')) $('setPuddleDurationNum').value = val;
+    });
+    $('setPuddleDurationNum')?.addEventListener('input', e => {
+      const val = Math.max(0.5, parseFloat(e.target.value) || 5);
+      puddleRippleDuration = val;
+      if ($('setPuddleDuration')) $('setPuddleDuration').value = Math.min(360, val);
+    });
+    $('setPuddleMaxConcurrent')?.addEventListener('input', e => {
+      const val = parseInt(e.target.value) || 4;
+      puddleMaxConcurrent = val;
+      if ($('setPuddleMaxConcurrentNum')) $('setPuddleMaxConcurrentNum').value = val;
+    });
+    $('setPuddleMaxConcurrentNum')?.addEventListener('input', e => {
+      const val = Math.max(1, parseInt(e.target.value) || 4);
+      puddleMaxConcurrent = val;
+      if ($('setPuddleMaxConcurrent')) $('setPuddleMaxConcurrent').value = Math.min(50, val);
     });
 
     $('setRoomBgOpacity')?.addEventListener('input', e => {
-      roomBgOpacity = parseInt(e.target.value) || 85;
+      roomBgOpacity = parseInt(e.target.value);
+      if (isNaN(roomBgOpacity)) roomBgOpacity = 100;
       if ($('setRoomBgOpacityVal')) $('setRoomBgOpacityVal').textContent = roomBgOpacity + '%';
-      if (typeof roomMap !== 'undefined') {
-        for (const rm of roomMap.values()) {
+      const rmMap = getLsRoomMap();
+      if (rmMap) {
+        for (const rm of rmMap.values()) {
           const bg = rm.roomBgColor || defaultBgColor;
-          rm.el.style.background = colorToRgba(bg, roomBgOpacity / 100);
+          rm.el.style.setProperty('--room-base-bg', colorToRgba(bg, roomBgOpacity / 100));
+          if (rm.lockBg || lockBg) rm.el.style.backgroundColor = colorToRgba(bg, roomBgOpacity / 100);
         }
       }
     });
@@ -5320,48 +5898,62 @@ document.addEventListener('keydown', async e => {
     });
     $('setSpecificFrameColor')?.addEventListener('input', e => {
       const path = $('setSpecificRoomSelect')?.value;
-      const r = path && typeof roomMap !== 'undefined' ? roomMap.get(path) : null;
+      const rmMap = getLsRoomMap();
+      const lsLayout = getLsLayout();
+      const r = path && rmMap ? rmMap.get(path) : null;
       if (r) {
         r.roomColor = e.target.value;
+        r.el.style.setProperty('--room-border-color', r.roomColor);
         r.el.style.borderColor = r.roomColor;
-        layout.rooms[path] = { ...(layout.rooms[path] || {}), roomColor: r.roomColor };
+        if (lsLayout?.rooms) lsLayout.rooms[path] = { ...(lsLayout.rooms[path] || {}), roomColor: r.roomColor };
+        window._landscapeState?.syncDoorwayBadges?.();
+        window._landscapeState?.drawBridges?.();
         persist();
       }
     });
     $('setSpecificBgColor')?.addEventListener('input', e => {
       const path = $('setSpecificRoomSelect')?.value;
-      const r = path && typeof roomMap !== 'undefined' ? roomMap.get(path) : null;
+      const rmMap = getLsRoomMap();
+      const lsLayout = getLsLayout();
+      const r = path && rmMap ? rmMap.get(path) : null;
       if (r) {
         r.roomBgColor = e.target.value;
-        r.el.style.background = colorToRgba(r.roomBgColor, roomBgOpacity / 100);
-        layout.rooms[path] = { ...(layout.rooms[path] || {}), roomBgColor: r.roomBgColor };
+        r.el.style.setProperty('--room-base-bg', colorToRgba(r.roomBgColor, roomBgOpacity / 100));
+        r.el.style.backgroundColor = colorToRgba(r.roomBgColor, roomBgOpacity / 100);
+        if (lsLayout?.rooms) lsLayout.rooms[path] = { ...(lsLayout.rooms[path] || {}), roomBgColor: r.roomBgColor };
         persist();
       }
     });
     $('setSpecificLockFrame')?.addEventListener('change', e => {
       const path = $('setSpecificRoomSelect')?.value;
-      const r = path && typeof roomMap !== 'undefined' ? roomMap.get(path) : null;
+      const rmMap = getLsRoomMap();
+      const lsLayout = getLsLayout();
+      const r = path && rmMap ? rmMap.get(path) : null;
       if (r) {
         r.lockFrame = e.target.checked;
-        layout.rooms[path] = { ...(layout.rooms[path] || {}), lockFrame: r.lockFrame };
+        if (lsLayout?.rooms) lsLayout.rooms[path] = { ...(lsLayout.rooms[path] || {}), lockFrame: r.lockFrame };
         persist();
       }
     });
     $('setSpecificLockBg')?.addEventListener('change', e => {
       const path = $('setSpecificRoomSelect')?.value;
-      const r = path && typeof roomMap !== 'undefined' ? roomMap.get(path) : null;
+      const rmMap = getLsRoomMap();
+      const lsLayout = getLsLayout();
+      const r = path && rmMap ? rmMap.get(path) : null;
       if (r) {
         r.lockBg = e.target.checked;
-        layout.rooms[path] = { ...(layout.rooms[path] || {}), lockBg: r.lockBg };
+        if (lsLayout?.rooms) lsLayout.rooms[path] = { ...(lsLayout.rooms[path] || {}), lockBg: r.lockBg };
         persist();
       }
     });
     $('setSpecificResetBtn')?.addEventListener('click', () => {
       const path = $('setSpecificRoomSelect')?.value;
-      const r = path && typeof roomMap !== 'undefined' ? roomMap.get(path) : null;
+      const rmMap = getLsRoomMap();
+      const r = path && rmMap ? rmMap.get(path) : null;
       if (r) {
         resetRoomColor(r);
         syncSpecificRoomControls(path);
+        refreshLandscapeLive();
       }
     });
 
@@ -5380,18 +5972,51 @@ document.addEventListener('keydown', async e => {
         showExt = !!$('setShowExt')?.checked;
         showHidden = !!$('setShowHidden')?.checked;
         showChecks = !!$('setShowChecks')?.checked;
+        if ($('setAccentColor')) {
+          accentColor = $('setAccentColor').value || '#0067c0';
+          document.documentElement.style.setProperty('--accent', accentColor);
+        }
         landscapeBg = $('setLandscapeBg')?.value || 'grid';
         landscapeBgColor = $('setCanvasColorPicker')?.value || '#0f172a';
         landscapeBgImage = $('setCanvasImageUrl')?.value || '';
+        canvasReactMode = !!$('setCanvasReactMode')?.checked;
         landscapePalette = $('setRoomPalette')?.value || 'default';
+        inheritShiftMode = $('setInheritShiftMode')?.value || 'lighter';
+        if ($('setModeSubPalette') && MODE_PALETTES[landscapePalette]) {
+          if (typeof modePaletteIndex !== 'object' || modePaletteIndex === null) modePaletteIndex = {};
+          modePaletteIndex[landscapePalette] = parseInt($('setModeSubPalette').value) || 0;
+          if (modePaletteIndex[landscapePalette] === 5) {
+            const arr = [];
+            for (let k = 0; k < 7; k++) arr.push($('setCustomSwatch' + k)?.value || '#3b82f6');
+            if (typeof customPaletteColors !== 'object' || customPaletteColors === null || Array.isArray(customPaletteColors)) customPaletteColors = {};
+            customPaletteColors[landscapePalette] = arr;
+          }
+        }
         browserAutoSleep = !!$('setAutoSleep')?.checked;
         autoSummarize = !!$('setAutoSummarize')?.checked;
         defaultFrameColor = $('setDefaultFrameColor')?.value || '#0067c0';
         defaultBgColor = $('setDefaultBgColor')?.value || '#1e293b';
-        roomBgOpacity = parseInt($('setRoomBgOpacity')?.value) || 85;
-        roomGlowIntensity = parseInt($('setRoomGlow')?.value) || 50;
+        const parsedOp = parseInt($('setRoomBgOpacity')?.value);
+        roomBgOpacity = isNaN(parsedOp) ? 100 : parsedOp;
+        const parsedGlow = parseInt($('setRoomGlow')?.value);
+        roomGlowIntensity = isNaN(parsedGlow) ? 50 : parsedGlow;
+        const parsedRange = parseInt($('setRoomGlowRangeNum')?.value ?? $('setRoomGlowRange')?.value);
+        roomGlowRange = isNaN(parsedRange) ? 18 : parsedRange;
+        document.documentElement.style.setProperty('--room-glow-intensity', roomGlowIntensity / 100);
+        document.documentElement.style.setProperty('--room-glow-range', `${roomGlowRange}px`);
         breathTargetColor = $('setBreathTargetColor')?.value || '#ffffff';
+        breathTargetBgColor = $('setBreathTargetBgColor')?.value || '#334155';
+        const parsedScale = parseInt($('setBreathScaleNum')?.value ?? $('setBreathScale')?.value);
+        breathScaleSize = isNaN(parsedScale) ? 20 : parsedScale;
+        breathAffectTiles = !!$('setBreathAffectTiles')?.checked;
+        puddleIntervalMin = Math.max(0.2, parseFloat($('setPuddleMin')?.value) || 2);
+        puddleIntervalMax = Math.max(puddleIntervalMin, parseFloat($('setPuddleMax')?.value) || 8);
+        puddleRippleDuration = Math.max(0.5, parseFloat($('setPuddleDurationNum')?.value ?? $('setPuddleDuration')?.value) || 5);
+        puddleMaxConcurrent = Math.max(1, parseInt($('setPuddleMaxConcurrentNum')?.value ?? $('setPuddleMaxConcurrent')?.value) || 4);
         activeRoomBorderColor = $('setActiveRoomColor')?.value || '#00f0ff';
+        document.documentElement.style.setProperty('--active-room-border', activeRoomBorderColor);
+        useCustomSelectedFolder = !!$('setUseCustomSelectedFolder')?.checked;
+        selectedFolderColor = $('setSelectedFolderColor')?.value || '#0078d4';
         breathingDuration = parseInt($('setBreathDurationNum')?.value) || parseInt($('setBreathDuration')?.value) || 6;
         lockFrame = !!$('setLockFrame')?.checked;
         lockBg = !!$('setLockBg')?.checked;

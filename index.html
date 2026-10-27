@@ -33,7 +33,6 @@
   <div class="toolbar-row cmd-row">
     <button id="scriptsBtn" title="Script Connections — Click to run/manage, or drag & drop any script file onto this button to connect it">⚡ Scripts</button>
     <button id="termBtn" title="Interactive Terminal & PowerShell / CMD">📟 Terminal ▾</button>
-    <button id="browserBtn" title="Open Standalone Web Browser Tab (Middle-click or Shift-click to spawn Browser Island in Landscape)">🌐 Browser</button>
     <div class="cmd-sep"></div>
     <select id="sort" title="Sort by">
       <option value="name">Sort: Name</option><option value="mtime">Sort: Date modified</option>
@@ -393,24 +392,29 @@
           </div>
         </div>
         <div class="setting-group">
-          <h3>Navigation & Landscape Hotkeys</h3>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <h3 style="margin:0">Navigation & Landscape Hotkeys (Click any hotkey to rebind)</h3>
+            <button id="resetAllHotkeysBtn" class="dash-btn" style="padding:2px 10px;font-size:11px">Reset Defaults</button>
+          </div>
           <table class="hotkey-table">
-            <tr><td><kbd>Shift + Scroll</kbd></td><td>Always Zoom Camera In / Out in Landscape</td></tr>
-            <tr><td><kbd>Alt + Click & Drag</kbd></td><td>Global Pan camera across entire landscape (anywhere)</td></tr>
-            <tr><td><kbd>Alt + Scroll</kbd></td><td>Scale tile & icon size inside room without camera zoom</td></tr>
-            <tr><td><kbd>Alt + Shift + Scroll</kbd></td><td>Scale room box width & height dimensions</td></tr>
-            <tr><td><kbd>Ctrl + Shift</kbd></td><td>Hold for Lens Loupe magnifier around cursor</td></tr>
-            <tr><td><kbd>Double-Click File</kbd></td><td>Open File Viewer Island inside Landscape</td></tr>
-            <tr><td><kbd>Shift + Double-Click</kbd></td><td>Open file in Native Windows default app</td></tr>
-            <tr><td><kbd>Right-Click Canvas</kbd></td><td>Spawn Folder Island, Browser, or HTML Viewer at click location</td></tr>
-            <tr><td><kbd>Drag to Empty Space</kbd></td><td>Create subfolder, move dragged files, and spawn child island</td></tr>
-            <tr><td><kbd>Hold / F2</kbd></td><td>Inline Rename active file or folder</td></tr>
-            <tr><td><kbd>Alt + P</kbd></td><td>Toggle Preview Pane</td></tr>
-            <tr><td><kbd>Alt + S</kbd></td><td>Toggle Split Pane (Left / Right / Up / Down)</td></tr>
-            <tr><td><kbd>Ctrl + T</kbd> / <kbd>Ctrl + W</kbd></td><td>New Tab / Close Active Tab</td></tr>
-            <tr><td><kbd>Middle-Click</kbd></td><td>Open item in new background tab</td></tr>
-            <tr><td><kbd>Ctrl + Shift + N</kbd></td><td>Create New Folder without view reset</td></tr>
-            <tr><td><kbd>Ctrl + F</kbd></td><td>Focus Live Filter Search Box</td></tr>
+            <tr><td>Landscape Camera Zoom (+ Scroll)</td><td><button class="hotkey-bind-btn" data-hk="modCameraZoom" data-mod-only="true">Shift</button></td></tr>
+            <tr><td>Global Landscape Camera Pan (+ Click & Drag)</td><td><button class="hotkey-bind-btn" data-hk="modCameraPan" data-mod-only="true">Alt</button></td></tr>
+            <tr><td>Indoor Room Tile & Icon Zoom (+ Scroll)</td><td><button class="hotkey-bind-btn" data-hk="modIndoorZoom" data-mod-only="true">Alt</button></td></tr>
+            <tr><td>Scale Room Box Width & Height (+ Scroll)</td><td><button class="hotkey-bind-btn" data-hk="modRoomScale" data-mod-only="true">Alt+Shift</button></td></tr>
+            <tr><td>Hold for Magnifier Loupe (Scroll adjusts zoom)</td><td><button class="hotkey-bind-btn" data-hk="modLoupe" data-mod-only="true">Ctrl+Shift</button></td></tr>
+            <tr><td>New Tab</td><td><button class="hotkey-bind-btn" data-hk="newTab">Ctrl+T</button></td></tr>
+            <tr><td>Close Active Tab</td><td><button class="hotkey-bind-btn" data-hk="closeTab">Ctrl+W</button></td></tr>
+            <tr><td>Reopen Closed Tab</td><td><button class="hotkey-bind-btn" data-hk="reopenTab">Ctrl+Shift+T</button></td></tr>
+            <tr><td>Create New Folder</td><td><button class="hotkey-bind-btn" data-hk="newFolder">Ctrl+Shift+N</button></td></tr>
+            <tr><td>Open New Window</td><td><button class="hotkey-bind-btn" data-hk="newWindow">Ctrl+N</button></td></tr>
+            <tr><td>Toggle Bottom Terminal Drawer</td><td><button class="hotkey-bind-btn" data-hk="toggleTerminal">Ctrl+`</button></td></tr>
+            <tr><td>Toggle Preview Pane</td><td><button class="hotkey-bind-btn" data-hk="togglePreview">Alt+P</button></td></tr>
+            <tr><td>Toggle Split Pane</td><td><button class="hotkey-bind-btn" data-hk="toggleSplit">Alt+S</button></td></tr>
+            <tr><td>Focus Address Bar</td><td><button class="hotkey-bind-btn" data-hk="focusAddress">Ctrl+L</button></td></tr>
+            <tr><td>Focus Live Filter Search</td><td><button class="hotkey-bind-btn" data-hk="focusSearch">Ctrl+F</button></td></tr>
+            <tr><td>Go to Home Dashboard</td><td><button class="hotkey-bind-btn" data-hk="goHome">Alt+Home</button></td></tr>
+            <tr><td>Inline Rename Selected Item</td><td><button class="hotkey-bind-btn" data-hk="rename">F2</button></td></tr>
+            <tr><td>Refresh Current View</td><td><button class="hotkey-bind-btn" data-hk="refresh">F5</button></td></tr>
           </table>
         </div>
       </div>
@@ -436,8 +440,6 @@
   </div>
 </div>
 
-<script src="gluon_dictionary.js"></script>
-<script src="gluon_engine.js"></script>
-<script src="fractal_summarizer.js"></script>
+<!-- Heavy Gluon & Summarizer scripts lazy-loaded on demand in renderer.js to save 200-400MB startup RAM -->
 <script src="renderer.js"></script>
 </body></html>

@@ -201,7 +201,47 @@ body.dark .grp-head { color: #58a6ff; }
 .row { padding: 2px 8px; height: 24px; cursor: default; }
 .row:hover { background: var(--hover); }
 .row.sel { background: var(--sel); }
-.drop-target { outline: 2px dashed #0078d4 !important; background: var(--hover) !important; }
+.drop-target {
+  outline: 2px solid #00f0ff !important;
+  outline-offset: -1px;
+  background: rgba(2, 132, 199, 0.26) !important;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.35), inset 0 0 8px rgba(0, 240, 255, 0.18) !important;
+}
+#list.drop-target, #spList.drop-target {
+  outline: 2px dashed #00f0ff !important;
+  outline-offset: -3px;
+  background: rgba(2, 132, 199, 0.06) !important;
+}
+.dragging-item {
+  opacity: 0.55;
+}
+.peek-drag-ghost {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  z-index: 99999;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #f8fafc;
+  border: 1.5px solid #00f0ff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55), 0 0 10px rgba(0, 240, 255, 0.35);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.peek-drag-ghost .dg-badge {
+  background: #00f0ff;
+  color: #090d16;
+  font-weight: 800;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
 .row .c-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chk { display: none; margin: 0 2px 0 0; cursor: pointer; }
@@ -382,16 +422,18 @@ body.dark .bridge-plank { stroke: #e3a83b; }
   position: absolute; transform: translate(-50%, -50%);
   width: var(--room-w, 350px); height: var(--room-h, 250px);
   min-width: 190px; min-height: 120px;
-  border: 2.5px solid #2b2b2b; border-radius: 10px;
-  background: var(--card); box-shadow: 0 10px 28px rgba(0,0,0,0.14);
-  display: flex; flex-direction: column; z-index: 10; overflow: hidden;
+  border: 2.5px solid var(--room-border-color, #2b2b2b); border-radius: 10px;
+  background-color: var(--room-base-bg, var(--card));
+  box-shadow: 0 10px 28px rgba(0,0,0,0.14);
+  display: flex; flex-direction: column; z-index: 10; overflow: visible;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-body.dark .map-room { border-color: #777; }
-.map-room.root-room { border-width: 3px; border-color: #0078d4; box-shadow: 0 12px 34px rgba(0,120,212,0.18); }
-.map-room.active-room { border-color: #0078d4; box-shadow: 0 0 0 3px rgba(0,120,212,0.28), 0 12px 34px rgba(0,0,0,0.2); z-index: 18; }
+body.dark .map-room { border-color: var(--room-border-color, #777); }
+.map-room.root-room { border-width: 3px; border-color: var(--room-border-color, #0078d4); }
+.map-room.active-room { border-color: var(--active-room-border, #00f0ff); z-index: 18; }
 .map-room-head {
   flex: none; padding: 5px 8px; background: var(--bar); border-bottom: 1.5px solid var(--border);
+  border-radius: 8px 8px 0 0; position: relative; z-index: 2;
   font-weight: 600; font-size: 11.5px;
   display: flex; align-items: center; justify-content: space-between; gap: 6px; cursor: move;
 }
@@ -410,7 +452,7 @@ body.dark .map-room { border-color: #777; }
 /* Unified Room Body and Items (Replaces cramped doorway/file split with full view parity) */
 .map-room-body {
   padding: 6px; flex: 1; min-height: 0; overflow-y: auto;
-  position: relative; box-sizing: border-box;
+  border-radius: 0 0 8px 8px; position: relative; z-index: 2; box-sizing: border-box;
 }
 .map-room-head .rm-view-sel {
   font-size: 10px; padding: 0 4px; height: 18px; border: 1px solid var(--input-bd);
@@ -1060,12 +1102,7 @@ input.rn { font: inherit; border: 1px solid #0067c0; background: var(--input-bg)
 
 /* Landscape Room Virtualization & Optimization */
 .map-room {
-  contain: layout style;
-  content-visibility: auto;
-  contain-intrinsic-size: 540px 380px;
-}
-.map-room.active-room {
-  content-visibility: visible;
+  contain: layout style paint;
 }
 
 /* Palettes and Fun Modes — Parameterized for 5 Palettes + Custom per Mode */
@@ -1151,42 +1188,52 @@ input.rn { font: inherit; border: 1px solid #0067c0; background: var(--input-bg)
   animation-delay: var(--phase-delay, 0s) !important;
 }
 
-/* Breathing Mode & Rain Puddle Ripple (Synchronized Rim + Floor + Expanding Rim Size + Tile Pulse, ZERO Saturation Shift) */
-@keyframes breathingPulse {
+/* 100% GPU-Composited Breathing Mode & Rain Puddle Ripple (Animates ONLY opacity & transform on ::before — Zero CPU Repaint Lag!) */
+@keyframes breathingGpuPulse {
   0%, 100% {
-    border-color: var(--room-border-color, #0067c0);
-    background-color: var(--room-base-bg, rgba(30, 41, 59, 1));
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2), 0 0 calc(var(--room-glow-intensity, 0.5) * var(--room-glow-range, 18px)) var(--room-border-color, rgba(0, 103, 192, 0.35));
+    opacity: 0;
+    transform: scale(1);
   }
   50% {
-    border-color: var(--breath-target, #ffffff) !important;
-    background-color: var(--breath-target-bg, rgba(51, 65, 85, 1)) !important;
-    box-shadow: 0 0 0 calc(var(--breath-scale, 20px) * 0.32) var(--breath-target, rgba(255, 255, 255, 0.45)),
-                0 0 calc(var(--room-glow-intensity, 0.5) * (var(--room-glow-range, 18px) + var(--breath-scale, 20px) * 2)) var(--breath-glow, rgba(255, 255, 255, 0.85)),
-                0 12px 36px rgba(0, 0, 0, 0.28) !important;
+    opacity: 1;
+    transform: scale(1.014);
   }
 }
-@keyframes breathingTilePulse {
+@keyframes breathingTileGpuPulse {
   0%, 100% {
     border-color: var(--folder-ambient-bd, rgba(255,255,255,0.12));
   }
   50% {
-    background-color: var(--breath-tile-bg, rgba(255, 255, 255, 0.22)) !important;
-    border-color: var(--breath-target, #ffffff) !important;
-    box-shadow: 0 0 10px var(--breath-glow, rgba(255, 255, 255, 0.45));
+    background-color: var(--breath-tile-bg, rgba(255, 255, 255, 0.18));
+    border-color: var(--breath-target, #ffffff);
   }
 }
-.breathing-room {
-  animation: breathingPulse var(--breath-duration, 6s) ease-in-out infinite !important;
+.breathing-room::before,
+.puddle-ripple-room::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 3px solid var(--breath-target, #ffffff);
+  background-color: var(--breath-target-bg, rgba(51, 65, 85, 0.9));
+  box-shadow: 0 0 0 calc(var(--breath-scale, 20px) * 0.28) var(--breath-target, rgba(255, 255, 255, 0.42)),
+              0 0 calc(var(--room-glow-intensity, 0.5) * (var(--room-glow-range, 18px) + var(--breath-scale, 20px) * 1.8)) var(--breath-glow, rgba(255, 255, 255, 0.85));
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  will-change: opacity, transform;
 }
-.breathing-room.affect-tiles .room-item {
-  animation: breathingTilePulse var(--breath-duration, 6s) ease-in-out infinite !important;
+.breathing-room::before {
+  animation: breathingGpuPulse var(--breath-duration, 6s) ease-in-out infinite;
 }
-.puddle-ripple-room {
-  animation: breathingPulse var(--puddle-duration, 5s) ease-in-out 1 !important;
+.breathing-room.affect-tiles .room-item.is-dir {
+  animation: breathingTileGpuPulse var(--breath-duration, 6s) ease-in-out infinite;
 }
-.puddle-ripple-room.affect-tiles .room-item {
-  animation: breathingTilePulse var(--puddle-duration, 5s) ease-in-out 1 !important;
+.puddle-ripple-room::before {
+  animation: breathingGpuPulse var(--puddle-duration, 5s) ease-in-out 1;
+}
+.puddle-ripple-room.affect-tiles .room-item.is-dir {
+  animation: breathingTileGpuPulse var(--puddle-duration, 5s) ease-in-out 1;
 }
 
 /* Rain Puddle Field Raindrop Expanding Wave Ring */
@@ -1337,18 +1384,52 @@ input.rn { font: inherit; border: 1px solid #0067c0; background: var(--input-bg)
 }
 
 /* Magnifier Loupe */
+.landscape-loupe,
 .magnifier-loupe {
-  position: fixed;
-  width: 190px;
-  height: 190px;
+  position: absolute;
+  width: 210px;
+  height: 210px;
   border-radius: 50%;
   border: 3px solid #00f0ff;
-  box-shadow: 0 0 24px rgba(0, 240, 255, 0.6), inset 0 0 20px rgba(0, 240, 255, 0.35);
+  box-shadow: 0 0 28px rgba(0, 240, 255, 0.65), inset 0 0 18px rgba(0, 240, 255, 0.35), 0 12px 32px rgba(0, 0, 0, 0.55);
   pointer-events: none;
-  z-index: 10000;
+  z-index: 950;
   display: none;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg, #0f172a);
+}
+.loupe-world-clone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.loupe-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(2, 132, 199, 0.9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  z-index: 5;
+  pointer-events: none;
+}
+.loupe-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(0, 240, 255, 0.55);
+  border-radius: 50%;
+  z-index: 4;
+  pointer-events: none;
 }
 
 /* Browser Island Room */
@@ -1546,14 +1627,31 @@ input.rn { font: inherit; border: 1px solid #0067c0; background: var(--input-bg)
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
 }
-.hotkey-table kbd {
+.hotkey-table kbd,
+.hotkey-bind-btn {
   background: var(--input-bg);
   border: 1px solid var(--input-bd);
-  border-radius: 3px;
-  padding: 2px 6px;
+  color: var(--fg);
+  border-radius: 4px;
+  padding: 3px 10px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 90px;
+  text-align: center;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  transition: all 0.15s;
+}
+.hotkey-bind-btn:hover {
+  border-color: #0284c7;
+  background: rgba(2, 132, 199, 0.12);
+}
+.hotkey-bind-btn.recording {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
 }
 .settings-foot {
   display: flex;
@@ -1669,12 +1767,13 @@ input.rn { font: inherit; border: 1px solid #0067c0; background: var(--input-bg)
    v0.8.20 UI Enhancements: Terminal, Glow, 2-Row Header, Folder Colors
    ======================================================== */
 
-/* Room Glow & Custom Intensity + Range */
+/* Room Glow & Custom Intensity + Range (Do NOT use !important on base .map-room box-shadow so @keyframes in Disco/Rainbow/Dusco animate freely!) */
 .map-room {
-  box-shadow: 0 8px 24px rgba(0,0,0,0.18), 0 0 calc(var(--room-glow-intensity, 0.5) * var(--room-glow-range, 18px)) var(--room-border-color, rgba(0, 103, 192, 0.35)) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18), 0 0 calc(var(--room-glow-intensity, 0.5) * var(--room-glow-range, 18px)) var(--room-border-color, rgba(0, 103, 192, 0.35));
 }
 .map-room.active-room {
-  box-shadow: 0 0 0 3px var(--active-border-color, #00f0ff), 0 0 calc(var(--room-glow-intensity, 0.5) * (var(--room-glow-range, 18px) + 18px)) var(--active-border-color, rgba(0, 240, 255, 0.65)), 0 12px 34px rgba(0,0,0,0.3) !important;
+  border-color: var(--active-room-border, #00f0ff);
+  box-shadow: 0 0 0 3px var(--active-room-border, #00f0ff), 0 0 calc(var(--room-glow-intensity, 0.5) * (var(--room-glow-range, 18px) + 18px)) var(--active-room-border, rgba(0, 240, 255, 0.65)), 0 12px 34px rgba(0,0,0,0.3);
 }
 
 /* Standalone Web Browser Tab */
@@ -1733,7 +1832,8 @@ input.rn { font: inherit; border: 1px solid #0067c0; background: var(--input-bg)
   background: var(--folder-ambient-hover, var(--hover));
   border-color: var(--folder-ambient-bd-hover, rgba(0, 120, 212, 0.4));
 }
-.room-item.is-dir.bridged {
+.room-item.is-dir.bridged,
+.room-item.is-dir.sel {
   background: var(--child-folder-bg, rgba(0, 120, 212, 0.12)) !important;
   border-color: var(--child-folder-bd, rgba(0, 120, 212, 0.45)) !important;
 }

@@ -262,6 +262,14 @@ ipcMain.handle('unzipItem', (_e, zipPath) => new Promise(resolve => {
 
 // ---- Icons ----
 const iconCache = new Map();
+const MAX_ICON_CACHE = 400;
+function setIconCacheBounded(k, v) {
+  if (iconCache.size >= MAX_ICON_CACHE && !iconCache.has(k)) {
+    const oldest = iconCache.keys().next().value;
+    iconCache.delete(oldest);
+  }
+  iconCache.set(k, v);
+}
 const DUMMY_FOLDER = path.join(os.tmpdir(), '__peek_folder_icon__');
 try { if (!fs.existsSync(DUMMY_FOLDER)) fs.mkdirSync(DUMMY_FOLDER, { recursive: true }); } catch {}
 const FLUENT_FOLDER_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -301,12 +309,12 @@ async function getFolderIcon(p, px = 32) {
       const img = await app.getFileIcon(p, { size: px > 32 ? 'large' : 'normal' });
       if (!img.isEmpty()) {
         const url = img.toDataURL();
-        iconCache.set(k, url);
+        setIconCacheBounded(k, url);
         return url;
       }
     } catch {}
   }
-  iconCache.set(k, FLUENT_FOLDER_SVG);
+  setIconCacheBounded(k, FLUENT_FOLDER_SVG);
   return FLUENT_FOLDER_SVG;
 }
 
@@ -324,7 +332,7 @@ async function smallIcon(p, isDir, unique) {
   if (iconCache.has(key)) return iconCache.get(key);
   try {
     const img = await app.getFileIcon(p, { size: 'normal' });
-    const url = img.toDataURL(); iconCache.set(key, url); return url;
+    const url = img.toDataURL(); setIconCacheBounded(key, url); return url;
   } catch { return null; }
 }
 ipcMain.handle('icon', async (_e, p, isDir, px, unique) => {
@@ -338,7 +346,7 @@ ipcMain.handle('icon', async (_e, p, isDir, px, unique) => {
     if (iconCache.has(key)) return iconCache.get(key);
     try {
       const img = await nativeImage.createThumbnailFromPath(p, { width: px, height: px });
-      if (!img.isEmpty() && !isBlank(img)) { const url = img.toDataURL(); iconCache.set(key, url); return url; }
+      if (!img.isEmpty() && !isBlank(img)) { const url = img.toDataURL(); setIconCacheBounded(key, url); return url; }
     } catch {}
   }
   return smallIcon(p, isDir, unique);
@@ -474,14 +482,37 @@ ipcMain.on('start-drag', async (event, paths) => {
   }
 });
 
-// mode: 'copy' | 'cut'. Skips anything that already exists at the destination.
+// mode: 'copy' | 'cut'.
+// When mode === 'copy' and destination already exists, automatically increments filename with " (n)" (e.g., "file (2).ext", "file (3).ext").
 ipcMain.handle('paste', async (_e, mode, srcs, destDir) => {
-  const skipped = [], moved = [];
+  const skipped = [], moved = [], copied = [];
   for (const s of srcs) {
     try {
-      const dest = path.join(destDir, path.basename(s));
-      if (s === dest || (mode === 'cut' && dest.startsWith(s + path.sep))) { skipped.push(path.basename(s) + ' (cannot move into itself)'); continue; }
-      if (fs.existsSync(dest)) { skipped.push(path.basename(s)); continue; }
+      const baseName = path.basename(s);
+      let dest = path.join(destDir, baseName);
+      if (mode === 'cut' && (s === dest || dest.startsWith(s + path.sep))) {
+        skipped.push(baseName + ' (cannot move into itself)');
+        continue;
+      }
+      if (fs.existsSync(dest)) {
+        if (mode === 'copy') {
+          let statIsDir = false;
+          try { statIsDir = (await fs.promises.stat(s)).isDirectory(); } catch {}
+          const ext = statIsDir ? '' : path.extname(baseName);
+          const stem = statIsDir ? baseName : baseName.slice(0, baseName.length - ext.length);
+          // If stem already ends in " (N)", strip it so copying "file (2).txt" produces "file (3).txt"
+          const match = stem.match(/^(.*)\s+\((\d+)\)$/);
+          const cleanStem = match ? match[1] : stem;
+          let idx = match ? parseInt(match[2], 10) + 1 : 2;
+          while (fs.existsSync(path.join(destDir, `${cleanStem} (${idx})${ext}`))) {
+            idx++;
+          }
+          dest = path.join(destDir, `${cleanStem} (${idx})${ext}`);
+        } else {
+          skipped.push(baseName);
+          continue;
+        }
+      }
       if (mode === 'cut') {
         try {
           await fs.promises.rename(s, dest);
@@ -497,10 +528,11 @@ ipcMain.handle('paste', async (_e, mode, srcs, destDir) => {
         moved.push({ from: s, to: dest });
       } else {
         await fs.promises.cp(s, dest, { recursive: true, errorOnExist: true, force: false });
+        copied.push({ from: s, to: dest });
       }
     } catch (e) { skipped.push(path.basename(s) + ' (' + (e.message || e) + ')'); }
   }
-  return { skipped, moved };
+  return { skipped, moved, copied };
 });
 
 async function runSmokeTests() {
