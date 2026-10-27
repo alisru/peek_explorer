@@ -449,10 +449,6 @@ const displayName = it => {
 const isGrid = () => ['small', 'medium', 'large', 'xl', 'tiles', 'list', 'lens'].includes(mode);
 const baseName = p => {
   if (p === HOME_URI) return 'Home';
-  if (p.startsWith('peek://gluon')) {
-    const sub = p.replace('peek://gluon', '').replace(/^\/+/, '').toUpperCase();
-    return sub ? `Gluon: ${sub}` : 'Semantic Gluons';
-  }
   return p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 };
 
@@ -580,220 +576,11 @@ async function updatePreviewPane() {
     if (res && typeof res.text === 'string') {
       const pvBody = box.querySelector('.pv-body');
       pvBody.innerHTML = '';
-
-      const isTextDoc = /\.(md|txt|markdown|js|ts|py|json|html|css)$/i.test(it.name);
-      // Fractal Polytrope Summarizer tab (Commented out per user request - preserved for later development)
-      /*
-      if (isTextDoc && typeof FractalSummarizer !== 'undefined' && autoSummarize) {
-        const summary = FractalSummarizer.summarizeText(res.text, it.name);
-        
-        const toggleBar = document.createElement('div');
-        toggleBar.className = 'pv-toggle-bar';
-        toggleBar.innerHTML = `
-          <button class="pv-toggle-btn active" data-tab="summary">🧬 Fractal Summary</button>
-          <button class="pv-toggle-btn" data-tab="fulltext">📄 Full Text (${fmtSize(it.size)})</button>
-        `;
-        
-        const summaryView = document.createElement('div');
-        summaryView.className = 'pv-summary-view';
-        summaryView.innerHTML = `
-          <div class="pv-singularity-card">
-            <div class="pv-singularity-label">🔒 Invariant Singularity (Core Grounded Truth)</div>
-            <div class="pv-singularity-text">"${summary.level1Singularity}"</div>
-          </div>
-          <div class="pv-sec-title">7-Plane Cognitive Geodesic</div>
-          <div class="pv-geodesic-list">
-            ${Object.entries(summary.level2Geodesic).map(([plane, item]) => `
-              <div class="pv-geodesic-item">
-                <span class="pv-geodesic-badge ${plane}">${item.label ? item.label.badge : plane}</span>
-                <span>"${item.sentence}"</span>
-              </div>
-            `).join('')}
-          </div>
-          ${summary.level3Spine && summary.level3Spine.length ? `
-            <div class="pv-sec-title">Invariant Section Spine (${summary.level3Spine.length} sections)</div>
-            <div class="pv-spine-list">
-              ${summary.level3Spine.slice(0, 6).map(s => `
-                <div class="pv-spine-item">
-                  <div class="pv-spine-sec">§ ${s.section}</div>
-                  <div>"${s.keyInvariant}"</div>
-                </div>
-              `).join('')}
-            </div>
-          ` : ''}
-        `;
-
-        const pre = document.createElement('pre');
-        pre.className = 'pv-text';
-        pre.style.display = 'none';
-        pre.textContent = res.text;
-
-        toggleBar.querySelectorAll('.pv-toggle-btn').forEach(btn => {
-          btn.onclick = () => {
-            toggleBar.querySelectorAll('.pv-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
-            const tab = btn.dataset.tab;
-            summaryView.style.display = tab === 'summary' ? 'flex' : 'none';
-            pre.style.display = tab === 'fulltext' ? 'block' : 'none';
-          };
-        });
-
-        pvBody.append(toggleBar, summaryView, pre);
-      } else {
-      */
       const pre = document.createElement('pre'); pre.className = 'pv-text';
       pre.textContent = res.text;
       pvBody.appendChild(pre);
-      // }
     }
   }
-}
-
-// ---- Semantic Gluon DNA Engine Cache & Lazy Loader ----
-const gluonCache = new Map();
-const GLUON_CACHE_MAX = 150;
-let gluonLoadPromise = null;
-
-function ensureGluonLoaded() {
-  if (typeof GluonEngine !== 'undefined') return Promise.resolve(true);
-  if (gluonLoadPromise) return gluonLoadPromise;
-  gluonLoadPromise = new Promise(resolve => {
-    const s1 = document.createElement('script');
-    s1.src = 'gluon_dictionary.js';
-    s1.onload = () => {
-      const s2 = document.createElement('script');
-      s2.src = 'gluon_engine.js';
-      s2.onload = () => resolve(typeof GluonEngine !== 'undefined');
-      s2.onerror = () => resolve(false);
-      document.head.appendChild(s2);
-    };
-    s1.onerror = () => resolve(false);
-    document.head.appendChild(s1);
-  });
-  return gluonLoadPromise;
-}
-
-function getCachedGluonAnalysis(item, text) {
-  const key = `${item.path}|${item.mtime}|${item.size}`;
-  if (gluonCache.has(key)) {
-    const val = gluonCache.get(key);
-    gluonCache.delete(key);
-    gluonCache.set(key, val);
-    return val;
-  }
-  if (typeof GluonEngine === 'undefined') return null;
-  const res = GluonEngine.analyzeDocument(text, item.name);
-  if (res) {
-    if (gluonCache.size >= GLUON_CACHE_MAX) {
-      const oldest = gluonCache.keys().next().value;
-      gluonCache.delete(oldest);
-    }
-    gluonCache.set(key, res);
-  }
-  return res;
-}
-
-async function renderGluonTelemetry(doc, it, container, myToken) {
-  const tel = document.createElement('div');
-  tel.className = 'pv-gluon-telemetry';
-
-  const hadronLabel = doc.isHadronSinglet
-    ? '⚪ White Singlet Baryon'
-    : (doc.cr > 0.45 ? '🔴 Will-Polarized' : (doc.cb > 0.45 ? '🔵 Proof-Polarized' : '🟢 Action-Polarized'));
-
-  tel.innerHTML = `
-    <div class="pv-gluon-header">
-      <a class="pv-gluon-badge ${doc.plane.toLowerCase()}" href="#" title="Click to view all ${doc.plane} files in Gluon Topic Space">${doc.planeInfo ? doc.planeInfo.badge : doc.plane}</a>
-      <span class="pv-gluon-hadron ${doc.isHadronSinglet ? 'hadron-singlet' : ''}">${hadronLabel}</span>
-      <span class="pv-gluon-veritas" title="Epistemic Rigor Score based on C1/C2 vocabulary, Hadron balance, and string continuity">Veritas: ${doc.veritasScore}</span>
-    </div>
-    <div class="pv-gauge-bar" title="SU(3) Color Gauge: ${(doc.cr*100).toFixed(1)}% Red (Will) | ${(doc.cg*100).toFixed(1)}% Green (Action) | ${(doc.cb*100).toFixed(1)}% Blue (Proof)">
-      <div class="gauge-red" style="width:${(doc.cr*100).toFixed(1)}%"></div>
-      <div class="gauge-green" style="width:${(doc.cg*100).toFixed(1)}%"></div>
-      <div class="gauge-blue" style="width:${(doc.cb*100).toFixed(1)}%"></div>
-    </div>
-    <div class="pv-gluon-pubtest">${doc.planeInfo ? doc.planeInfo.pubTest : ''}</div>
-    ${doc.snapsCount > 0 ? `
-      <div class="pv-gluon-snap-warn" title="Confinement broken (r_eff >= 1.529) across adjacent sections">
-        ⚠️ String Snapping: ${doc.snapsCount} non-sequitur leap${doc.snapsCount > 1 ? 's' : ''} (Tension: ${(doc.maxTension*100).toFixed(0)}%)
-      </div>
-    ` : ''}
-    <div class="pv-gluon-resonance">
-      <div class="pv-res-title">
-        <span>🧬 Gluon Resonance (Related in Folder)</span>
-      </div>
-      <div class="pv-res-chips"><span style="color:var(--muted);font-size:10px">Calculating resonance…</span></div>
-    </div>
-  `;
-
-  const planeLink = tel.querySelector('.pv-gluon-badge');
-  if (planeLink) {
-    planeLink.onclick = e => {
-      e.preventDefault();
-      go('peek://gluon/' + doc.plane.toLowerCase());
-    };
-  }
-
-  container.appendChild(tel);
-
-  // Asynchronously scan related files in the current view
-  const chipsEl = tel.querySelector('.pv-res-chips');
-  const rows = visibleRows().filter(r => r._item && !r._item.isDir && /\.(md|txt|json|js|py|html|css)$/i.test(r._item.name) && r._item.path !== it.path);
-
-  if (!rows.length) {
-    chipsEl.innerHTML = `<span style="color:var(--muted);font-size:10px">(no other text files in folder)</span>`;
-    return;
-  }
-
-  const candidates = [];
-  const maxScan = Math.min(rows.length, 12);
-  for (let i = 0; i < maxScan; i++) {
-    const candRow = rows[i];
-    const candItem = candRow._item;
-    let candDoc = null;
-    const cacheKey = `${candItem.path}|${candItem.mtime}|${candItem.size}`;
-    if (gluonCache.has(cacheKey)) {
-      candDoc = gluonCache.get(cacheKey);
-    } else if (candItem.size <= 2 * 1024 * 1024) {
-      try {
-        const cRes = await window.api.readPreview(candItem.path);
-        if (cRes && cRes.text) candDoc = getCachedGluonAnalysis(candItem, cRes.text);
-      } catch (_) {}
-    }
-    if (candDoc) candidates.push({ item: candItem, row: candRow, doc: candDoc });
-  }
-
-  if (myToken !== previewToken) return;
-
-  const ranked = GluonEngine.rankRelated(doc, candidates);
-  if (!ranked.length) {
-    chipsEl.innerHTML = `<span style="color:var(--muted);font-size:10px">(no high-affinity neighbors)</span>`;
-    return;
-  }
-
-  chipsEl.innerHTML = '';
-  ranked.slice(0, 4).forEach(rel => {
-    const chip = document.createElement('div');
-    chip.className = 'pv-res-chip';
-    const topConcept = (rel.resonance.sharedLemmas && rel.resonance.sharedLemmas.length) ? rel.resonance.sharedLemmas[0] : '';
-    const lemmasText = (rel.resonance.sharedLemmas && rel.resonance.sharedLemmas.length)
-      ? `\nShared Concepts: ${rel.resonance.sharedLemmas.join(', ')}`
-      : '';
-    const bondsText = (rel.resonance.bondedPairs && rel.resonance.bondedPairs.length)
-      ? `\nCausal Bonds: ${rel.resonance.bondedPairs.join(' | ')}`
-      : '';
-    chip.title = `${rel.item.name}\nAffinity: ${rel.resonance.affinity}%\nBond: ${rel.resonance.bondType}${lemmasText}${bondsText}\nKernel Score: ${rel.resonance.kernelScore || 0}\nPlane: ${rel.doc.plane}`;
-    chip.innerHTML = `
-      <div style="display:flex;align-items:center;overflow:hidden;gap:4px">
-        <span class="res-name">${rel.item.name}</span>
-        ${topConcept ? `<span class="res-tag">${topConcept}</span>` : ''}
-      </div>
-      <span class="res-affinity">${rel.resonance.affinity}%</span>
-    `;
-    chip.onclick = () => {
-      selectClick(rel.item, rel.row, null);
-    };
-    chipsEl.appendChild(chip);
-  });
 }
 
 async function calcFolderSize(it, cell) {
@@ -1557,7 +1344,6 @@ function updateAddrIcon() {
   const ico = $('addrIcon');
   if (!ico) return;
   if (cur === HOME_URI) ico.textContent = '🏠';
-  else if (cur.startsWith('peek://gluon')) ico.textContent = '🧬';
   else if (/^[A-Za-z]:[\\/]*$/.test(cur)) ico.textContent = '💾';
   else if (cur.startsWith('\\\\')) ico.textContent = '🌐';
   else ico.textContent = '📁';
@@ -1588,20 +1374,6 @@ function renderCrumbs() {
   bar.appendChild(homeCrumb);
 
   if (cur === HOME_URI) return;
-  if (cur.startsWith('peek://gluon')) {
-    const firstSep = document.createElement('span'); firstSep.className = 'crumb-sep'; firstSep.textContent = '›';
-    bar.appendChild(firstSep);
-    const gBtn = document.createElement('span'); gBtn.className = 'crumb'; gBtn.textContent = '🧬 Gluon';
-    gBtn.onclick = e => { e.stopPropagation(); go('peek://gluon'); };
-    bar.appendChild(gBtn);
-    const sub = cur.replace('peek://gluon', '').replace(/^\/+/, '').toUpperCase();
-    if (sub) {
-      const sep = document.createElement('span'); sep.className = 'crumb-sep'; sep.textContent = '›';
-      const sBtn = document.createElement('span'); sBtn.className = 'crumb'; sBtn.textContent = sub;
-      bar.append(sep, sBtn);
-    }
-    return;
-  }
   const firstSep = document.createElement('span'); firstSep.className = 'crumb-sep'; firstSep.textContent = '›';
   bar.appendChild(firstSep);
 
@@ -1696,9 +1468,9 @@ function renderCrumbs() {
       if (recentFolders && recentFolders.length) {
         histItems.push({ label: 'Recent Locations', disabled: true });
         for (const f of recentFolders.slice(0, 10)) {
-          if (!f) continue;
+          if (!f || f.startsWith('peek://gluon') || f.startsWith('peek://browser')) continue;
           histItems.push({
-            label: (f === HOME_URI ? '🏠 Home' : (f.startsWith('peek://gluon') ? '🧬 ' + baseName(f) : '📁 ' + f)),
+            label: (f === HOME_URI ? '🏠 Home' : '📁 ' + f),
             run: () => go(f)
           });
         }
@@ -1706,7 +1478,6 @@ function renderCrumbs() {
       }
       histItems.push(
         { label: '🏠  Home Dashboard', run: () => go(HOME_URI) },
-        { label: '🧬  Semantic Gluons', run: () => go('peek://gluon') },
         '-',
         { label: '📋  Copy current path', run: () => navigator.clipboard.writeText(cur) }
       );
@@ -4219,104 +3990,6 @@ function renderHtmlTab(filePath, container) {
   container.append(toolbar, frame);
 }
 
-async function renderGluonTopicSpace(targetUri, container) {
-  container.innerHTML = '';
-  await ensureGluonLoaded();
-  const planeFilter = targetUri.replace('peek://gluon', '').replace(/^\/+/, '').toUpperCase();
-  const targetPlane = (planeFilter && typeof GluonEngine !== 'undefined' && GluonEngine.PLANES[planeFilter]) ? planeFilter : null;
-
-  const head = document.createElement('div');
-  head.className = 'gluon-space-head';
-  head.innerHTML = `
-    <h2>🧬 Semantic Gluon Topic Space</h2>
-    <p>Clustering documents across the <strong>7 Planes of Reality</strong> &amp; <strong>QCD SU(3) Color Gauge</strong>.</p>
-    <div class="gluon-prism-bar">
-      <div class="gluon-prism-pill ${!targetPlane ? 'active' : ''}" data-plane="">All Planes</div>
-      <div class="gluon-prism-pill ${targetPlane === 'Q1' ? 'active' : ''}" data-plane="q1">👤 Q1 Who</div>
-      <div class="gluon-prism-pill ${targetPlane === 'Q2' ? 'active' : ''}" data-plane="q2">✨ Q2 What</div>
-      <div class="gluon-prism-pill ${targetPlane === 'Q3' ? 'active' : ''}" data-plane="q3">🌍 Q3 Where</div>
-      <div class="gluon-prism-pill ${targetPlane === 'Q4' ? 'active' : ''}" data-plane="q4">🎵 Q4 Why</div>
-      <div class="gluon-prism-pill ${targetPlane === 'Q5' ? 'active' : ''}" data-plane="q5">⚙️ Q5 How</div>
-      <div class="gluon-prism-pill ${targetPlane === 'Q6' ? 'active' : ''}" data-plane="q6">⏳ Q6 Cause</div>
-      <div class="gluon-prism-pill ${targetPlane === 'Q7' ? 'active' : ''}" data-plane="q7">💥 Q7 Effect</div>
-    </div>
-  `;
-  container.appendChild(head);
-
-  head.querySelectorAll('.gluon-prism-pill').forEach(pill => {
-    pill.onclick = () => {
-      const pl = pill.getAttribute('data-plane');
-      go(pl ? 'peek://gluon/' + pl : 'peek://gluon');
-    };
-  });
-
-  // Source folder to cluster: find recent real folder or user home
-  let scanDir = recentFolders.find(f => f && f !== HOME_URI && !f.startsWith('peek://'));
-  if (!scanDir && cachedPlaces && cachedPlaces.cachedPlaces && cachedPlaces.cachedPlaces.length) {
-    scanDir = cachedPlaces.cachedPlaces[0].path;
-  }
-  if (!scanDir) {
-    container.innerHTML += `<div style="padding:20px;color:var(--muted)">Navigate to a folder first to cluster files by Semantic Gluons.</div>`;
-    return;
-  }
-
-  const listRes = await window.api.list(scanDir);
-  if (!listRes || !listRes.items) return;
-
-  const textFiles = listRes.items.filter(it => !it.isDir && /\.(md|txt|json|js|py|html|css)$/i.test(it.name));
-  const grid = document.createElement('div');
-  grid.className = 'gluon-topic-grid';
-
-  let matchCount = 0;
-  for (const it of textFiles) {
-    let doc = null;
-    const cacheKey = `${it.path}|${it.mtime}|${it.size}`;
-    if (gluonCache.has(cacheKey)) {
-      doc = gluonCache.get(cacheKey);
-    } else if (it.size <= 2 * 1024 * 1024) {
-      try {
-        const prevRes = await window.api.readPreview(it.path);
-        if (prevRes && prevRes.text) doc = getCachedGluonAnalysis(it, prevRes.text);
-      } catch (_) {}
-    }
-    if (!doc) continue;
-    if (targetPlane && doc.plane !== targetPlane) continue;
-
-    matchCount++;
-    const card = document.createElement('div');
-    card.className = `gluon-card ${doc.plane.toLowerCase()}`;
-    card.innerHTML = `
-      <div class="gluon-card-head">
-        <span class="pv-gluon-badge ${doc.plane.toLowerCase()}">${doc.planeInfo ? doc.planeInfo.badge : doc.plane}</span>
-        <span style="font-weight:700;font-size:10px;color:#10b981;">Veritas ${doc.veritasScore}</span>
-      </div>
-      <div class="gluon-card-name" title="${it.name}">${it.name}</div>
-      <div class="pv-gauge-bar" style="height:5px;margin:4px 0;">
-        <div class="gauge-red" style="width:${(doc.cr*100).toFixed(1)}%"></div>
-        <div class="gauge-green" style="width:${(doc.cg*100).toFixed(1)}%"></div>
-        <div class="gauge-blue" style="width:${(doc.cb*100).toFixed(1)}%"></div>
-      </div>
-      <div class="gluon-card-meta">
-        <span>${doc.isHadronSinglet ? '⚪ Singlet' : 'Polarized'}</span>
-        <span>${fmtSize(it.size)}</span>
-      </div>
-    `;
-    card.onclick = () => {
-      go(scanDir);
-      setTimeout(() => {
-        const row = visibleRows().find(r => r._item && r._item.path === it.path);
-        if (row) selectClick(it, row, null);
-      }, 150);
-    };
-    grid.appendChild(card);
-  }
-
-  if (!matchCount) {
-    grid.innerHTML = `<div style="color:var(--muted);padding:16px;">No documents found matching plane ${targetPlane || 'any'} in ${baseName(scanDir)}.</div>`;
-  }
-  container.appendChild(grid);
-}
-
 async function show() {
   $('address').value = cur;
   stopAddressEdit();
@@ -4328,23 +4001,14 @@ async function show() {
   list.innerHTML = '';
   list.onmousemove = null;
   list.onmouseleave = null;
-  if (cur === HOME_URI || cur.startsWith('peek://browser')) {
-    if (cur.startsWith('peek://browser')) cur = HOME_URI;
+  if (cur === HOME_URI || cur.startsWith('peek://browser') || cur.startsWith('peek://gluon')) {
+    if (cur.startsWith('peek://browser') || cur.startsWith('peek://gluon')) cur = HOME_URI;
     list.className = '';
     $('header').style.display = 'none';
     renderHomeDashboard(list);
     totalCount = 0;
     updateStatus();
     document.title = 'Home - Peek Explorer';
-    return;
-  }
-  if (cur.startsWith('peek://gluon')) {
-    list.className = '';
-    $('header').style.display = 'none';
-    await renderGluonTopicSpace(cur, list);
-    totalCount = 0;
-    updateStatus();
-    document.title = 'Semantic Gluons - Peek Explorer';
     return;
   }
   if (/\.html?$/i.test(cur)) {

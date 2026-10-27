@@ -816,53 +816,6 @@ async function runSmokeTests() {
     await delay(100);
   }
 
-  // Test Semantic Gluon DNA Engine Integration (Phase 3)
-  tests.push({
-    name: 'GluonEngine global object is loaded and accessible',
-    pass: typeof window.GluonEngine !== 'undefined',
-    err: typeof window.GluonEngine === 'undefined' ? 'window.GluonEngine is undefined' : null
-  });
-
-  if (typeof window.GluonEngine !== 'undefined') {
-    const testDoc = window.GluonEngine.analyzeDocument('Logical equations, theorems, axioms, formal proof, and count consistency.', 'test.md');
-    tests.push({
-      name: 'GluonEngine computes SU(3) colors, dominant plane and Veritas score',
-      pass: !!testDoc && testDoc.plane === 'Q5' && testDoc.cr > 0 && testDoc.cg > 0 && testDoc.cb > 0 && testDoc.veritasScore > 0,
-      err: !testDoc ? 'analyzeDocument returned null' : (testDoc.plane !== 'Q5' ? `Expected plane Q5, got ${testDoc.plane}` : null)
-    });
-
-    const dict = window.GluonEngine.getDictionary();
-    const testDocB = window.GluonEngine.analyzeDocument('The nervous system state operates with clear resources and energy.', 'test_b.md');
-    const res = window.GluonEngine.computeResonance(testDoc, testDocB);
-
-    tests.push({
-      name: 'GluonEngine loads 500-lemma empirical dictionary and computes continuous vectors',
-      pass: !!dict && Object.keys(dict).length >= 500 && !!testDocB && testDocB.learnedLemmaCount > 0 && Array.isArray(testDocB.phiHead),
-      err: !dict ? 'Dictionary missing' : (Object.keys(dict).length < 500 ? `Expected 500 lemmas, got ${Object.keys(dict).length}` : null)
-    });
-
-    tests.push({
-      name: 'GluonEngine computeResonance computes kernel attention and relational bonds',
-      pass: !!res && res.affinity > 0 && typeof res.kernelScore === 'number' && typeof res.bondType === 'string',
-      err: !res ? 'computeResonance returned null' : null
-    });
-
-    try {
-      if (window.go) {
-        await window.go('peek://gluon');
-        await delay(300);
-        const gluonHead = listEl.querySelector('.gluon-space-head');
-        tests.push({
-          name: 'Virtual topic space (peek://gluon) renders Prism Bar and Space Head',
-          pass: !!gluonHead,
-          err: !gluonHead ? 'gluon-space-head not found in listEl' : null
-        });
-      }
-    } catch (gErr) {
-      tests.push({ name: 'peek://gluon navigation', pass: false, err: String(gErr) });
-    }
-  }
-
   // Test Native Address Bar Accessibility & Controls (v0.8.8)
   const addrWrap = document.getElementById('addrWrap');
   const addrIcon = document.getElementById('addrIcon');
