@@ -1,0 +1,158 @@
+Command exited with code 0.
+
+Command output:
+
+> E:\Vector Field Theory\peek_explorer\main.js:1:const { app, BrowserWindow, ipcMain, shell, nativeImage, clipboard, 
+dialog, Menu } = require('electron');
+  E:\Vector Field Theory\peek_explorer\main.js:2:const fs = require('fs');
+  E:\Vector Field Theory\peek_explorer\main.js:3:const path = require('path');
+  E:\Vector Field Theory\peek_explorer\main.js:4:const os = require('os');
+  E:\Vector Field Theory\peek_explorer\main.js:5:const { execFile, spawn } = require('child_process');
+  E:\Vector Field Theory\peek_explorer\main.js:6:
+  E:\Vector Field Theory\peek_explorer\main.js:7:// ---- Saved settings (view, sort, group, window size, tab session, 
+column widths, cached pins, scripts, bookmarks, recent, newTabTarget) ----
+  E:\Vector Field Theory\peek_explorer\main.js:8:// Portable data mode: if packaged and a 'data' directory exists 
+adjacent to the executable, store user settings locally
+  E:\Vector Field Theory\peek_explorer\main.js:9:const portableDataDir = path.join(path.dirname(process.execPath), 
+'data');
+  E:\Vector Field Theory\peek_explorer\main.js:10:if (app.isPackaged && fs.existsSync(portableDataDir)) {
+  E:\Vector Field Theory\peek_explorer\main.js:11:  try { app.setPath('userData', portableDataDir); }
+  E:\Vector Field Theory\peek_explorer\main.js:12:  catch (e) { console.warn('Could not set portable userData path:', 
+e.message); }
+  E:\Vector Field Theory\peek_explorer\main.js:13:}
+  E:\Vector Field Theory\peek_explorer\main.js:14:const settingsFile = () => path.join(app.getPath('userData'), 
+'settings.json');
+  E:\Vector Field Theory\peek_explorer\main.js:15:function readSettings() { try { return 
+JSON.parse(fs.readFileSync(settingsFile(), 'utf8')); } catch { return {}; } }
+  E:\Vector Field Theory\peek_explorer\main.js:16:function writeSettings(patch) {
+  E:\Vector Field Theory\peek_explorer\main.js:17:  try { fs.mkdirSync(path.dirname(settingsFile()), { recursive: true 
+}); fs.writeFileSync(settingsFile(), JSON.stringify({ ...readSettings(), ...patch }, null, 2)); }
+  E:\Vector Field Theory\peek_explorer\main.js:18:  catch (e) { console.warn('settings not saved:', e.message); }
+  E:\Vector Field Theory\peek_explorer\main.js:19:}
+  E:\Vector Field Theory\peek_explorer\main.js:20:ipcMain.handle('getSettings', () => readSettings());
+  E:\Vector Field Theory\peek_explorer\main.js:21:ipcMain.handle('saveSettings', (_e, patch) => { 
+writeSettings(patch); return true; });
+  E:\Vector Field Theory\peek_explorer\main.js:22:
+  E:\Vector Field Theory\peek_explorer\main.js:23:// ---- Shared clipboard across all Peek Explorer windows + Windows 
+OS FileDropList ----
+  E:\Vector Field Theory\peek_explorer\main.js:24:let sharedClip = null; // { mode: 'copy'|'cut', paths: [] }
+  E:\Vector Field Theory\peek_explorer\main.js:25:ipcMain.handle('getClip', () => sharedClip);
+  E:\Vector Field Theory\peek_explorer\main.js:26:ipcMain.handle('setClip', (_e, c) => {
+  E:\Vector Field Theory\peek_explorer\main.js:229:    const isDrive = /^[A-Za-z]:\\?$/.test(p);
+  E:\Vector Field Theory\peek_explorer\main.js:230:    try {
+> E:\Vector Field Theory\peek_explorer\main.js:231:      const img = isDrive ? await app.getFileIcon(p, { size: 
+'normal' }) : await nativeImage.createThumbnailFromPath(p, { width: 32, height: 32 });
+  E:\Vector Field Theory\peek_explorer\main.js:232:      if (!img.isEmpty() && !isBlank(img)) { const url = 
+img.toDataURL(); iconCache.set(k, url); return url; }
+  E:\Vector Field Theory\peek_explorer\main.js:233:    } catch {}
+  E:\Vector Field Theory\peek_explorer\main.js:234:    iconCache.set(k, FOLDER_SVG);
+  E:\Vector Field Theory\peek_explorer\main.js:235:    return FOLDER_SVG;
+  E:\Vector Field Theory\peek_explorer\main.js:236:  }
+  E:\Vector Field Theory\peek_explorer\main.js:237:  const ext = path.extname(p).toLowerCase();
+  E:\Vector Field Theory\peek_explorer\main.js:238:  const key = unique ? p : isDir ? '<dir>' : (['.exe', '.lnk', 
+'.ico', '.msi', ''].includes(ext) ? p : ext);
+  E:\Vector Field Theory\peek_explorer\main.js:239:  if (iconCache.has(key)) return iconCache.get(key);
+  E:\Vector Field Theory\peek_explorer\main.js:240:  try {
+> E:\Vector Field Theory\peek_explorer\main.js:241:    const img = await app.getFileIcon(isDir && !unique ? 
+GENERIC_FOLDER : p, { size: 'normal' });
+  E:\Vector Field Theory\peek_explorer\main.js:242:    const url = img.toDataURL(); iconCache.set(key, url); return 
+url;
+  E:\Vector Field Theory\peek_explorer\main.js:243:  } catch { return null; }
+  E:\Vector Field Theory\peek_explorer\main.js:244:}
+> E:\Vector Field Theory\peek_explorer\main.js:245:ipcMain.handle('icon', async (_e, p, isDir, px, unique) => {
+  E:\Vector Field Theory\peek_explorer\main.js:246:  if (!p || p === 'peek://home') return FOLDER_SVG;
+  E:\Vector Field Theory\peek_explorer\main.js:247:  if (px <= 24) return smallIcon(p, isDir, unique);
+  E:\Vector Field Theory\peek_explorer\main.js:248:  const key = 'T' + px + '|' + p;
+  E:\Vector Field Theory\peek_explorer\main.js:249:  if (iconCache.has(key)) return iconCache.get(key);
+  E:\Vector Field Theory\peek_explorer\main.js:250:  try {
+> E:\Vector Field Theory\peek_explorer\main.js:251:    const img = await nativeImage.createThumbnailFromPath(p, { 
+width: px, height: px });
+  E:\Vector Field Theory\peek_explorer\main.js:252:    if (!img.isEmpty() && !isBlank(img)) { const url = 
+img.toDataURL(); iconCache.set(key, url); return url; }
+  E:\Vector Field Theory\peek_explorer\main.js:253:  } catch {}
+  E:\Vector Field Theory\peek_explorer\main.js:254:  return smallIcon(p, isDir, unique);
+  E:\Vector Field Theory\peek_explorer\main.js:255:});
+  E:\Vector Field Theory\peek_explorer\main.js:256:
+  E:\Vector Field Theory\peek_explorer\main.js:257:// ---- Quick access pins, read from Windows (read-only) & cached 
+in settings ----
+  E:\Vector Field Theory\peek_explorer\main.js:258:ipcMain.handle('pins', () => new Promise(resolve => {
+  E:\Vector Field Theory\peek_explorer\main.js:259:  const ps = `$ErrorActionPreference='SilentlyContinue'; 
+[Console]::OutputEncoding=[Text.Encoding]::UTF8; (New-Object -ComObject 
+Shell.Application).Namespace('shell:::{679f85cb-0220-4080-b29b-5540cc05aab6}').Items() | ForEach-Object { if 
+(($_.Verbs() | Where-Object { $_.Name -match 'npin from' }) -ne $null) { "$($_.Name)|$($_.Path)" } }`;
+  E:\Vector Field Theory\peek_explorer\main.js:260:  execFile('powershell.exe', ['-NoProfile', '-Command', ps], { 
+timeout: 60000 }, (err, out) => {
+  E:\Vector Field Theory\peek_explorer\main.js:261:    if (err && !out) return resolve([]);
+  E:\Vector Field Theory\peek_explorer\main.js:262:    const list = out.split(/\r?\n/).filter(Boolean).map(l => { 
+const i = l.indexOf('|'); return { name: l.slice(0, i), path: l.slice(i + 1) }; }).filter(p => 
+/^[A-Za-z]:\\/.test(p.path));
+  E:\Vector Field Theory\peek_explorer\main.js:263:    if (list.length) writeSettings({ cachedPins: list });
+  E:\Vector Field Theory\peek_explorer\main.js:264:    resolve(list);
+  E:\Vector Field Theory\peek_explorer\main.js:265:  });
+  E:\Vector Field Theory\peek_explorer\main.js:266:}));
+  E:\Vector Field Theory\peek_explorer\main.js:267:
+  E:\Vector Field Theory\peek_explorer\main.js:268:// ---- Real Windows context-menu verbs (path passed via env var, 
+never interpolated) ----
+  E:\Vector Field Theory\peek_explorer\main.js:269:const psFile = `$ErrorActionPreference='SilentlyContinue'; 
+[Console]::OutputEncoding=[Text.Encoding]::UTF8;
+  E:\Vector Field Theory\peek_explorer\main.js:270:$p=$env:PE_PATH; $sh=New-Object -ComObject Shell.Application;
+  E:\Vector Field Theory\peek_explorer\main.js:271:$item=$sh.Namespace((Split-Path $p -Parent)).ParseName((Split-Path 
+$p -Leaf)); if(-not $item){ $item=$sh.Namespace($p).Self };
+  E:\Vector Field Theory\peek_explorer\main.js:272:$verbs=@($item.Verbs());`;
+  E:\Vector Field Theory\peek_explorer\main.js:273:ipcMain.handle('verbs', (_e, p) => new Promise(resolve => {
+  E:\Vector Field Theory\peek_explorer\main.js:274:  execFile('powershell.exe', ['-NoProfile', '-Command', psFile + ` 
+$i=0; foreach($v in $verbs){ if($v.Name){ "$i|$($v.Name)" }; $i++ }`],
+  E:\Vector Field Theory\peek_explorer\main.js:275:    { env: { ...process.env, PE_PATH: p }, timeout: 20000 }, (_err, 
+out) => {
+  E:\Vector Field Theory\peek_explorer\main.js:276:      resolve((out || '').split(/\r?\n/).filter(Boolean).map(l => { 
+const i = l.indexOf('|'); return { index: +l.slice(0, i), label: l.slice(i + 1).replace(/&/g, '') }; }).filter(v => 
+v.label));
+  E:\Vector Field Theory\peek_explorer\main.js:368:  if (!paths || !paths.length) return;
+  E:\Vector Field Theory\peek_explorer\main.js:369:  try {
+> E:\Vector Field Theory\peek_explorer\main.js:370:    const icon = await app.getFileIcon(paths[0], { size: 'normal' 
+}).catch(() => nativeImage.createEmpty());
+  E:\Vector Field Theory\peek_explorer\main.js:371:    event.sender.startDrag({
+  E:\Vector Field Theory\peek_explorer\main.js:372:      file: paths[0],
+  E:\Vector Field Theory\peek_explorer\main.js:373:      files: paths,
+> E:\Vector Field Theory\peek_explorer\main.js:374:      icon: icon || nativeImage.createEmpty()
+  E:\Vector Field Theory\peek_explorer\main.js:375:    });
+  E:\Vector Field Theory\peek_explorer\main.js:376:  } catch (err) {
+  E:\Vector Field Theory\peek_explorer\main.js:377:    try {
+  E:\Vector Field Theory\peek_explorer\main.js:378:      event.sender.startDrag({
+  E:\Vector Field Theory\peek_explorer\main.js:379:        file: paths[0],
+  E:\Vector Field Theory\peek_explorer\main.js:380:        files: paths,
+> E:\Vector Field Theory\peek_explorer\main.js:381:        icon: nativeImage.createEmpty()
+  E:\Vector Field Theory\peek_explorer\main.js:382:      });
+  E:\Vector Field Theory\peek_explorer\main.js:383:    } catch {}
+  E:\Vector Field Theory\peek_explorer\main.js:384:  }
+  E:\Vector Field Theory\peek_explorer\main.js:385:});
+  E:\Vector Field Theory\peek_explorer\main.js:386:
+  E:\Vector Field Theory\peek_explorer\main.js:387:// mode: 'copy' | 'cut'. Skips anything that already exists at the 
+destination.
+  E:\Vector Field Theory\peek_explorer\main.js:388:ipcMain.handle('paste', async (_e, mode, srcs, destDir) => {
+  E:\Vector Field Theory\peek_explorer\main.js:389:  const skipped = [], moved = [];
+  E:\Vector Field Theory\peek_explorer\main.js:390:  for (const s of srcs) {
+  E:\Vector Field Theory\peek_explorer\main.js:391:    try {
+  E:\Vector Field Theory\peek_explorer\main.js:392:      const dest = path.join(destDir, path.basename(s));
+  E:\Vector Field Theory\peek_explorer\main.js:393:      if (s === dest || (mode === 'cut' && dest.startsWith(s + 
+path.sep))) { skipped.push(path.basename(s) + ' (cannot move into itself)'); continue; }
+  E:\Vector Field Theory\peek_explorer\main.js:394:      if (fs.existsSync(dest)) { skipped.push(path.basename(s)); 
+continue; }
+  E:\Vector Field Theory\peek_explorer\main.js:395:      if (mode === 'cut') {
+  E:\Vector Field Theory\peek_explorer\main.js:396:        try {
+  E:\Vector Field Theory\peek_explorer\main.js:397:          await fs.promises.rename(s, dest);
+  E:\Vector Field Theory\peek_explorer\main.js:398:        } catch (renameErr) {
+  E:\Vector Field Theory\peek_explorer\main.js:399:          // Cross-device (different drives in Windows) throws 
+EXDEV / EPERM: fallback to copy + remove
+  E:\Vector Field Theory\peek_explorer\main.js:400:          if (renameErr.code === 'EXDEV' || renameErr.code === 
+'EPERM') {
+  E:\Vector Field Theory\peek_explorer\main.js:401:            await fs.promises.cp(s, dest, { recursive: true, 
+errorOnExist: true, force: false });
+  E:\Vector Field Theory\peek_explorer\main.js:402:            await fs.promises.rm(s, { recursive: true, force: true 
+});
+  E:\Vector Field Theory\peek_explorer\main.js:403:          } else {
+  E:\Vector Field Theory\peek_explorer\main.js:404:            throw renameErr;
+  E:\Vector Field Theory\peek_explorer\main.js:405:          }
+  E:\Vector Field Theory\peek_explorer\main.js:406:        }
+
+

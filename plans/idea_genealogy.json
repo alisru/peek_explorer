@@ -1,0 +1,59 @@
+{
+  "generation": 2,
+  "timestamp": "2026-10-25T01:41:00Z",
+  "project": "Peek Explorer",
+  "project_path": "e:\\Vector Field Theory\\peek_explorer",
+  "version": "0.8.7",
+  "unified_floor": {
+    "hold_to_rename_550ms": "100% Protected and active in makeItem and landscape room items",
+    "native_ergonomics": "Ctrl+Shift+N, Alt+Enter, Shift+Delete, 2D grid arrows (v0.8.6)",
+    "tactical_radar_hud": "190x130 canvas minimap with frustum and sonar (v0.8.6)",
+    "draggable_split_resizer": "splitGrip handle with ratio persistence (v0.8.6)",
+    "scroll_containment": "Fixed in v0.8.3 (html/body overflow locked)",
+    "universal_middle_click": "Ubiquitous auxclick across rooms, lenses, tabs, and split panes",
+    "filename_overlap": "Fixed in v0.8.4 (overflow-wrap: anywhere, word-break: break-all, 2-line clamp)",
+    "portable_export": "Built in v0.8.5 (PeekExplorer.exe + data/ USB mode)"
+  },
+  "agents": [
+    {
+      "name": "The Son (Veritas-Gluon)",
+      "id": "agent_son_02",
+      "conversation_id": "6c253f81-2e60-442f-9f84-501bdd795e33",
+      "ratio": "0.75M / 0.25F",
+      "epistemic_bias": "Most Successful / Verified",
+      "mandate": "Exact QCD mathematical fidelity (Cornell V(r), string snapping rc=1.529, SU(3) charges), optical thickness (tau), luminescence (L=exp(-tau)), Veritas rigor score, LRU memoization with cancellation tokens, export-portable.js integration",
+      "status": "completed",
+      "key_findings": [
+        "QCD color distribution (cr, cg, cb) maps cleanly to Will/Action/Proof in pure JS without float drift",
+        "String snapping rc = 1.529 detects non-sequiturs across markdown paragraphs",
+        "LRU cache keyed by path|mtime|size reduces repeated preview overhead to 0.002ms",
+        "export-portable.js must explicitly include gluon_engine.js in filesToCopy"
+      ]
+    },
+    {
+      "name": "The Daughter (Chroma-Gluon)",
+      "id": "agent_daughter_02",
+      "conversation_id": "86724899-c5b0-4448-ad5a-f20702dcd190",
+      "ratio": "0.25M / 0.75F",
+      "epistemic_bias": "Most Interesting / Works",
+      "mandate": "Visual chromatic lightbars, glowing Hadron pills, 7-Planes pub-test explanations, clickable resonance chips, dynamic gauge-friction SVG bridges in Landscape mode",
+      "status": "completed",
+      "key_findings": [
+        "Living tri-color gradient bar gives instant intuitive grasp of document composition",
+        "Soft white glow for Hadron Singlet provides positive visual reinforcement for balanced reasoning",
+        "Landscape SVG bridges dynamically color-coded by gauge friction (cyan-emerald for natural paths, amber-red for leaps)",
+        "peek://gluon/<plane> provides instant virtual clustering without modifying file system"
+      ]
+    }
+  ],
+  "synthesis": {
+    "masterwork": "Unified Semantic Gluon DNA Engine & Preview Telemetry v1.0",
+    "components": [
+      "gluon_engine.js: Pure-JS port of unified_gluon_dna_engine.py with QCD SU(3), Cornell V(r), String Snapping rc=1.529, 7 Planes, Optical Tau, Luminescence, Veritas Rigor Score, and Resonance Ranking",
+      "Preview Pane Telemetry: SU(3) gradient lightbar, Hadron Singlet glowing pill, 7-Planes pub-test badge, String Snapping alert, and clickable Gluon Resonance drawer",
+      "Landscape Bridges: Dynamic gauge-friction coloring across room-to-room bridges",
+      "Virtual Topic Space: peek://gluon and peek://gluon/<plane> router in show() and go()",
+      "Portable Export: Added gluon_engine.js to export-portable.js"
+    ]
+  }
+}

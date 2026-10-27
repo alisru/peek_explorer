@@ -1,0 +1,15 @@
+{
+  "name": "peek-explorer",
+  "version": "0.8.20",
+  "description": "Explorer-style file viewer with inline folder drop-down peek",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "electron . --smoke-test",
+    "export": "node export-portable.js",
+    "build:portable": "node export-portable.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

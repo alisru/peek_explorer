@@ -1,0 +1,32 @@
+# Node & Electron dependencies
+node_modules/
+package-lock.json
+# Build & Portable Exports
+dist/
+build/
+out/
+release/
+*.zip
+*.exe
+*.nupkg
+# Runtime caches, logs & state
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+# Temporary dumps & local workspace scratch files
+docs/*_dump_*.txt
+drawing_board/
+*.tmp
+*.bak
+# Gluon & Fractal Summarizer modules
+gluon*.js
+gluon*
+*summarizer*.js
+*summarizer*.py
+# One-off helper / patch scripts
+fix_drop.js
+*populate*.js
+patch_*.js
+test_*.js

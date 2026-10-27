@@ -1,0 +1,342 @@
+Command exited with code 0.
+
+Command output:
+
+  const $ = id => document.getElementById(id);
+> const HOME_URI = 'peek://home';
+  const IMG = /\.(png|jpe?g|gif|webp|bmp|jfif|svg|ico)$/i;
+  const VID = /\.(mp4|webm|mov|mkv|m4v)$/i;
+  const AUD = /\.(mp3|wav|ogg|flac|m4a)$/i;
+  const SCRIPT_EXT = /\.(ps1|bat|cmd|py|js|vbs)$/i;
+  const ZIP_EXT = /\.zip$/i;
+  window.addEventListener('unhandledrejection', e => reportError(e.reason));
+  
+> let cur = HOME_URI, hist = [HOME_URI], hi = 0, totalCount = 0;
+  let mode = 'details', sortKey = 'name', sortAsc = true, groupKey = 'none';
+  let filterText = '', showPreview = false, darkMode = false, showHidden = true, showExt = true, showChecks = false;
+  let newTabTarget = 'home'; // 'home' | 'userHome' | 'duplicate'
+  let colWidths = { date: 150, type: 110, size: 85 };
+  let expanded = new Set(); // paths currently dropped down (per tab)
+  let undoStack = [];         // [{ type: 'rename'|'move', ops: [{ from, to }] }]
+  let landscapeLayout = {};   // { [dirPath]: { nodes: { [name]: {x,y} }, zones: [{id, title, x, y, w, h}] } }
+> let splitState = { active: false, dir: 'right', cur: HOME_URI, hist: [HOME_URI], hi: 0, mode: 'details', expanded: 
+new Set() };
+  
+  async function syncClip() {
+    clip = await window.api.getClip();
+    if (!clip) {
+      const osFiles = await window.api.getOsClipFiles();
+    $('back').disabled = hi <= 0;
+    $('fwd').disabled = hi >= hist.length - 1;
+>   $('up').disabled = cur === HOME_URI;
+  }
+  
+  const fmtSize = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : n < 1073741824 ? (n / 
+1048576).toFixed(1) + ' MB' : (n / 1073741824).toFixed(1) + ' GB';
+  const fmtDate = m => m ? new Date(m).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const fileUrl = p => 'file:///' + p.replace(/\\/g, 
+'/').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:');
+  const parent = p => {
+>   if (!p || p === HOME_URI) return HOME_URI;
+    const isUnc = p.startsWith('\\\\');
+    const q = p.replace(/[\\/]+$/, '');
+    if (isUnc) {
+      const raw = q.slice(2).split(/[\\/]/).filter(Boolean);
+>     if (raw.length <= 1) return HOME_URI;
+      return '\\\\' + raw.slice(0, -1).join('\\');
+    }
+    const i = q.lastIndexOf('\\');
+>   return (i <= 2 && /^[A-Za-z]:/.test(q)) ? HOME_URI : (q.slice(0, i) || HOME_URI);
+  };
+  const typeOf = it => it.isDir ? 'File folder' : ((it.name.includes('.') ? it.name.split('.').pop() : 
+'').toUpperCase() + ' file').trim();
+  const displayName = it => {
+    if (it.isDir || showExt) return it.name;
+    const dot = it.name.lastIndexOf('.');
+  };
+  const isGrid = () => ['small', 'medium', 'large', 'xl', 'tiles', 'list', 'lens'].includes(mode);
+> const baseName = p => p === HOME_URI ? 'Home' : (p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p);
+  
+  // ---- Selection + Status + Preview Pane (with direct rename textbox + video/audio/text preview) ----
+  const visibleRows = () => [...$('list').querySelectorAll('.row.item, .room-item, .room-file, .room-door')].filter(r 
+=> r._item && r.style.display !== 'none' && !r.closest('.collapsed'));
+  function updateStatus() {
+>   if (cur === HOME_URI) {
+      $('status').textContent = `Home Dashboard  |  ${scripts.length} script connections  |  ${bookmarks.length} 
+bookmarks`;
+      if (showPreview) updatePreviewPane();
+      return;
+    }
+    const n = selected.size;
+      }
+      const dest = getTargetDir();
+>     if (!srcs.length || !dest || dest === HOME_URI) return;
+      const op = e.ctrlKey ? 'copy' : 'cut';
+      const r = await window.api.paste(op, srcs, dest);
+      if (r.moved && r.moved.length) undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: 
+m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+      if (r.skipped && r.skipped.length) alert('Skipped (already exists or invalid):\n' + r.skipped.join('\n'));
+      show();
+      scripts.push({ name: picked.name, path: picked.path });
+      persist();
+>     if (cur === HOME_URI) show();
+      $('status').textContent = `�s� Connected script: ${picked.name} (${picked.path})`;
+    } else {
+      $('status').textContent = `�s� Script already connected: ${picked.name}`;
+    }
+  }
+      }
+      persist();
+>     if (cur === HOME_URI) show();
+      $('status').textContent = added
+        ? `�s� Added ${added} script connection${added > 1 ? 's' : ''}!`
+        : `�s� Script already in Script Connections`;
+      if (el === $('scriptsBtn')) openScriptsMenu();
+    });
+      '-',
+      { label: '+ Connect a script (.ps1, .bat, .py, .js)�?�', run: () => addScriptConnection() },
+>     ...(scripts.length ? [{ label: 'Manage scripts on Home Dashboard', run: () => go(HOME_URI) }] : [])
+    ]);
+    placeMenu(r.left, r.bottom + 2);
+  }
+  $('scriptsBtn').onclick = e => {
+    e.stopPropagation();
+    const listEl = $('list'), rub = $('rubber'), contentEl = $('content');
+    listEl.addEventListener('mousedown', e => {
+>     if (mode === 'landscape' || mode === 'lens' || cur === HOME_URI || e.button !== 0 || 
+e.target.closest('.row.item') || e.target.closest('.room-item') || e.target.closest('.arrow') || 
+e.target.closest('.grp-head') || e.target.closest('.dash')) return;
+      hideMenu();
+      const cr = contentEl.getBoundingClientRect();
+      startX = e.clientX - cr.left; startY = e.clientY - cr.top;
+      dragging = false;
+      basePaths = e.ctrlKey ? new Set(selected.keys()) : new Set();
+  function startAddressEdit() {
+    $('addrWrap').classList.add('editing');
+>   $('address').value = cur === HOME_URI ? '' : cur;
+    $('address').placeholder = 'Enter folder path or peek://home';
+    $('address').focus();
+    $('address').select();
+  }
+  function stopAddressEdit() {
+    const homeCrumb = document.createElement('span'); homeCrumb.className = 'crumb';
+    homeCrumb.textContent = 'dY?� Home';
+>   homeCrumb.onclick = e => { e.stopPropagation(); go(HOME_URI); };
+>   homeCrumb.addEventListener('auxclick', e => { if (e.button === 1) { e.stopPropagation(); newTab(HOME_URI, [], 
+e.shiftKey); } });
+    bar.appendChild(homeCrumb);
+  
+>   if (cur === HOME_URI) return;
+    const firstSep = document.createElement('span'); firstSep.className = 'crumb-sep'; firstSep.textContent = '�?�';
+    bar.appendChild(firstSep);
+  
+    const isUnc = cur.startsWith('\\\\');
+    const clean = cur.replace(/[\\/]+$/, '');
+    list.onmousemove = null;
+    list.onmouseleave = null;
+>   if (cur === HOME_URI) {
+      list.className = '';
+      $('header').style.display = 'none';
+      renderHomeDashboard(list);
+      totalCount = 0;
+      updateStatus();
+  window.closeSplit = closeSplit;
+  function splitGo(p, push = true) {
+>   if (!p) p = HOME_URI;
+    splitState.cur = p;
+    if (push && splitState.hist[splitState.hi] !== p) {
+      splitState.hist = splitState.hist.slice(0, splitState.hi + 1);
+      splitState.hist.push(p);
+      splitState.hi = splitState.hist.length - 1;
+    spList.onmouseleave = null;
+    wireDropTarget(spList, () => splitState.cur);
+>   if (splitState.cur === HOME_URI) {
+      spList.className = '';
+      renderHomeDashboard(spList);
+      return;
+    }
+    if (splitState.mode === 'landscape' || splitState.mode === 'lens') {
+        '-',
+        ...otherTabs.slice(0, 6).map(o => ({
+>         label: `�-�  Split Right with Tab: ${baseName(o.t.cur || HOME_URI)}`,
+>         run: () => activateSplit('right', o.t.cur || HOME_URI)
+        }))
+      ] : []),
+      ...(splitState.active ? [
+        '-',
+        { label: '�,  Swap Primary & Split Panes', run: () => { const tmp = cur; go(splitState.cur); splitGo(tmp); } 
+},
+  
+  function go(p, push = true) {
+>   if (!p) p = HOME_URI;
+    cur = p;
+    clearSelection(); anchorPath = null; focusedPath = null;
+>   if (p !== HOME_URI) {
+      recentFolders = [p, ...recentFolders.filter(x => x.toLowerCase() !== p.toLowerCase())].slice(0, 20);
+    }
+    if (push) {
+      if (hist[hi] !== p) { hist = hist.slice(0, hi + 1); hist.push(p); hi = hist.length - 1; }
+    }
+  function defaultNewTabPath() {
+    if (newTabTarget === 'duplicate') return cur;
+>   if (newTabTarget === 'userHome') return cachedPlaces.home || HOME_URI;
+>   return HOME_URI;
+  }
+  function renderTabs() {
+    const bar = $('tabs'); bar.innerHTML = '';
+    tabs.forEach((t, i) => {
+      const el = document.createElement('div');
+      const p = i === active ? cur : t.cur;
+      const label = document.createElement('span');
+>     label.textContent = (t.pinned ? 'dY"O ' : '') + (p === HOME_URI ? 'dY?� Home' : baseName(p));
+      label.title = p + ' (Middle-click to close A� Click �-_ to Split Left/Right/Up/Down A� Right-click for options)';
+      el.appendChild(label);
+      const spDd = document.createElement('span'); spDd.className = 'split-dd'; spDd.textContent = '�-_'; spDd.title = 
+'Split Tab Left / Right / Up / Down';
+      spDd.onclick = e => {
+        e.stopPropagation();
+          ...(splitState.active ? [{ label: '�o  Close Split Pane', run: closeSplit }] : []),
+          '-',
+>         { label: 'New tab opens: Home Dashboard' + (newTabTarget === 'home' ? '  �o"' : ''), run: () => { 
+newTabTarget = 'home'; persist(); if (cur === HOME_URI) show(); } },
+>         { label: 'New tab opens: User Home Folder' + (newTabTarget === 'userHome' ? '  �o"' : ''), run: () => { 
+newTabTarget = 'userHome'; persist(); if (cur === HOME_URI) show(); } },
+>         { label: 'New tab opens: Duplicate Current Tab' + (newTabTarget === 'duplicate' ? '  �o"' : ''), run: () => 
+{ newTabTarget = 'duplicate'; persist(); if (cur === HOME_URI) show(); } },
+          '-',
+          { label: 'Close other tabs', disabled: tabs.length <= 1, run: () => { saveTab(); tabs = [tabs[i]]; 
+loadTab(0); persist(); } },
+          { label: 'Close tabs to the right', disabled: i >= tabs.length - 1, run: () => { saveTab(); tabs = 
+tabs.slice(0, i + 1); if (active > i) loadTab(i); else renderTabs(); persist(); } },
+          { label: 'Close tab (Ctrl+W)', run: () => closeTab(i) }
+        ]);
+  function loadTab(i) {
+    active = i; const t = tabs[i];
+>   cur = t.cur || HOME_URI; hist = t.hist && t.hist.length ? t.hist : [cur]; hi = typeof t.hi === 'number' ? t.hi : 
+hist.length - 1;
+    expanded = new Set(t.expanded || []);
+    clearSelection(); anchorPath = null; focusedPath = null;
+    show(); renderTabs();
+  }
+  function switchTab(i) { if (i === active || !tabs[i]) return; saveTab(); loadTab(i); persist(); }
+  $('fwd').onclick = goForward;
+  $('up').onclick = () => go(parent(cur));
+> $('homeBtn').onclick = () => go(HOME_URI);
+  $('refresh').onclick = show;
+  
+  // Middle-click on Back / Forward / Up / Home opens that destination in a new tab!
+  $('back').addEventListener('auxclick', e => { if (e.button === 1 && hi > 0) newTab(hist[hi - 1], [], false); });
+  $('fwd').addEventListener('auxclick', e => { if (e.button === 1 && hi < hist.length - 1) newTab(hist[hi + 1], [], 
+false); });
+> $('up').addEventListener('auxclick', e => { if (e.button === 1 && cur !== HOME_URI) newTab(parent(cur), [], false); 
+});
+> $('homeBtn').addEventListener('auxclick', e => { if (e.button === 1) newTab(HOME_URI, [], true); });
+  
+  function showHistoryMenu(e) {
+    e.preventDefault(); e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    fillMenu(hist.map((p, idx) => ({
+>     label: (idx === hi ? '�-?  ' : '    ') + (p === HOME_URI ? 'dY?� Home Dashboard' : p),
+      run: () => { hi = idx; go(hist[hi], false); }
+    })));
+    placeMenu(r.left, r.bottom + 2);
+  }
+  $('back').addEventListener('contextmenu', showHistoryMenu);
+  
+  $('address').addEventListener('keydown', e => {
+>   if (e.key === 'Enter') { stopAddressEdit(); go($('address').value.trim() || HOME_URI); }
+    else if (e.key === 'Escape') { stopAddressEdit(); }
+  });
+  $('address').addEventListener('blur', () => stopAddressEdit());
+  $('search').addEventListener('input', e => { filterText = e.target.value; applyFilter(); });
+  $('search').addEventListener('keydown', e => { if (e.key === 'Escape') { $('search').value = ''; filterText = ''; 
+applyFilter(); $('search').blur(); } });
+  $('spBack').addEventListener('auxclick', e => { if (e.button === 1 && splitState.hi > 0) { e.preventDefault(); 
+newTab(splitState.hist[splitState.hi - 1], [], false); } });
+  $('spUp').onclick = () => splitGo(parent(splitState.cur), true);
+> $('spUp').addEventListener('auxclick', e => { if (e.button === 1 && splitState.cur !== HOME_URI) { 
+e.preventDefault(); newTab(parent(splitState.cur), [], false); } });
+> $('spHome').onclick = () => splitGo(HOME_URI, true);
+> $('spHome').addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); newTab(HOME_URI, [], 
+true); } });
+> $('spAddr').addEventListener('keydown', e => { if (e.key === 'Enter') splitGo($('spAddr').value.trim() || HOME_URI, 
+true); });
+  $('spView').onchange = e => { splitState.mode = e.target.value; renderSplitPane(); };
+  $('spSwap').onclick = () => { const tmp = cur; go(splitState.cur); splitGo(tmp); };
+  $('spSwap').addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); newTab(splitState.cur, [], 
+false); } });
+  $('spClose').onclick = closeSplit;
+  const splitGrip = $('splitGrip');
+  const VIEW_ORDER = ['details', 'list', 'small', 'content', 'tiles', 'medium', 'large', 'xl', 'lens', 'landscape'];
+  $('list').addEventListener('wheel', e => {
+>   if (!e.ctrlKey || cur === HOME_URI) return;
+    e.preventDefault();
+    const idx = VIEW_ORDER.indexOf(mode);
+    const next = VIEW_ORDER[Math.max(0, Math.min(VIEW_ORDER.length - 1, idx + (e.deltaY < 0 ? 1 : -1)))];
+    if (next !== mode) { mode = next; $('view').value = mode; show(); persist(); }
+  }, { passive: false });
+    const homeItem = document.createElement('div'); homeItem.className = 'n';
+    homeItem.innerHTML = `<span style="font-size:15px">dY?�</span><span>Home Dashboard</span>`;
+>   homeItem.onclick = () => go(HOME_URI);
+>   homeItem.addEventListener('auxclick', e => { if (e.button === 1) newTab(HOME_URI, [], e.shiftKey); });
+    nav.appendChild(homeItem);
+  
+    bmHost = document.createElement('div'); nav.appendChild(bmHost);
+    renderBookmarksNav();
+  
+    const sess = isPrimary && !startPath && settings.session && settings.session.tabs && settings.session.tabs.length 
+? settings.session : null;
+    if (sess) { tabs = sess.tabs; loadTab(Math.min(sess.active || 0, tabs.length - 1)); }
+>   else { const p = startPath || HOME_URI; tabs = [{ cur: p, hist: [p], hi: 0, expanded: [] }]; loadTab(0); }
+  
+    const pins = await window.api.pins();
+    if (pins.length) {
+      cachedPlaces.cachedPins = pins;
+      qa.innerHTML = '';
+      addNav('Quick access', pins, qa);
+>     if (cur === HOME_URI) show();
+    }
+  })();
+  
+  // ---------------- Context menu, shortcuts, file actions, undo ----------------
+  const menuEl = document.createElement('div'); menuEl.id = 'ctx'; document.body.appendChild(menuEl);
+  const pasteDir = it => (it && it.isDir && selected.size <= 1) ? it.path : cur;
+  async function doPaste(dest) {
+>   if (!dest || dest === HOME_URI) return;
+    await syncClip();
+    if (!clip) return;
+    const r = await window.api.paste(clip.mode, clip.paths, dest);
+    if (r.moved && r.moved.length) undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: 
+m.from.slice(0, m.from.lastIndexOf('\\')) })) });
+    if (clip.mode === 'cut') await storeClip(null);
+  // Right-click on empty space = folder menu
+  $('content').addEventListener('contextmenu', async e => {
+>   if (cur === HOME_URI) return;
+    e.preventDefault();
+    await syncClip();
+    fillMenu([
+      { label: 'New folder', run: () => createAndRename(() => window.api.newFolder(cur)) },
+      { label: 'New text document (.txt)', run: () => createAndRename(() => window.api.newFile(cur, '.txt')) },
+      e.preventDefault();
+      const target = selected.size ? [...selected.keys()][0] : cur;
+>     if (target && target !== HOME_URI) window.api.props(target);
+      return;
+    }
+    if (e.ctrlKey && e.key === 'Tab') { e.preventDefault(); switchTab((active + (e.shiftKey ? -1 : 1) + tabs.length) % 
+tabs.length); return; }
+    if (e.ctrlKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); switchTab(Math.min(+e.key - 1, tabs.length - 1)); 
+return; }
+    if ((e.ctrlKey && e.key.toLowerCase() === 'l') || (e.altKey && e.key.toLowerCase() === 'd')) { e.preventDefault(); 
+startAddressEdit(); return; }
+    if (e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); $('previewBtn').click(); return; }
+    if (e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); splitState.active ? closeSplit() : 
+activateSplit('right', cur); return; }
+>   if (e.altKey && e.key === 'Home') { e.preventDefault(); go(HOME_URI); return; }
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  
+    const rows = visibleRows();
+    const curIdx = rows.findIndex(r => r._item && r._item.path === (focusedPath || (selected.size ? 
+[...selected.keys()][0] : null)));
+    const curRow = curIdx !== -1 ? rows[curIdx] : null;
+
+

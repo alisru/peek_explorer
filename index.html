@@ -1,0 +1,443 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Peek Explorer</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+  window.addEventListener('error', function(e) {
+    var s = document.getElementById('status');
+    if (s && !s.innerHTML.includes('copyErrBtn')) {
+      var errText = (e.error && (e.error.stack || e.error.message)) || e.message || String(e);
+      s.innerHTML = '<span style="color:#ef4444;font-weight:700">⚠️ Script Error: ' + errText + '</span> <button id="earlyCopyBtn" style="padding:2px 8px;font-size:10.5px;margin-left:8px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer">📋 Copy Error</button>';
+      var btn = document.getElementById('earlyCopyBtn');
+      if (btn) btn.onclick = function() { navigator.clipboard.writeText(errText); btn.textContent = '✓ Copied!'; };
+    }
+  });
+</script>
+</head>
+<body>
+<div id="tabs"></div>
+<div id="toolbar">
+  <div class="toolbar-row nav-row">
+    <button id="back" title="Back (Alt+Left or Mouse Back · Middle-click for new tab · Right-click for history)">←</button>
+    <button id="fwd" title="Forward (Alt+Right or Mouse Forward · Middle-click for new tab · Right-click for history)">→</button>
+    <button id="up" title="Up (Alt+Up · Middle-click for new tab)">↑</button>
+    <button id="homeBtn" title="Home Dashboard (Alt+Home · Middle-click for new tab)">🏠</button>
+    <button id="refresh" title="Refresh (F5)">⟳</button>
+    <div id="addrWrap">
+      <div id="addrIcon" class="addr-icon" title="Location icon · Click to edit address">📁</div>
+      <div id="crumbs" title="Click empty space or press Ctrl+L to edit path · Middle-click any segment for new tab"></div>
+      <input id="address" spellcheck="false">
+      <button id="addrHistBtn" class="addr-btn" title="Address history (click to show recent locations)">▾</button>
+    </div>
+    <input id="search" type="search" placeholder="Filter… (Ctrl+F)" spellcheck="false">
+  </div>
+  <div class="toolbar-row cmd-row">
+    <button id="scriptsBtn" title="Script Connections — Click to run/manage, or drag & drop any script file onto this button to connect it">⚡ Scripts</button>
+    <button id="termBtn" title="Interactive Terminal & PowerShell / CMD">📟 Terminal ▾</button>
+    <button id="browserBtn" title="Open Standalone Web Browser Tab (Middle-click or Shift-click to spawn Browser Island in Landscape)">🌐 Browser</button>
+    <div class="cmd-sep"></div>
+    <select id="sort" title="Sort by">
+      <option value="name">Sort: Name</option><option value="mtime">Sort: Date modified</option>
+      <option value="type">Sort: Type</option><option value="size">Sort: Size</option>
+    </select>
+    <button id="sortDir" title="Ascending / descending">↑</button>
+    <select id="group" title="Group by">
+      <option value="none">Group: None</option>
+      <option value="type">Group: Type</option>
+      <option value="mtime">Group: Date</option>
+      <option value="size">Group: Size</option>
+      <option value="name">Group: Name</option>
+    </select>
+    <div class="cmd-sep"></div>
+    <select id="view" title="View (Ctrl+Wheel)">
+      <option value="details">Details</option><option value="list">List</option>
+      <option value="tiles">Tiles</option><option value="content">Content</option>
+      <option value="small">Small icons</option><option value="medium">Medium icons</option>
+      <option value="large">Large icons</option><option value="xl">Extra large icons</option>
+      <!-- <option value="lens">🔍 Lens (LOD)</option> -->
+      <option value="landscape">🗺️ Landscape (Map)</option>
+    </select>
+    <button id="splitBtn" title="Split Tab Left / Right / Up / Down (Alt+S or Tab ▾ dropdown)">◫ Split</button>
+    <div class="cmd-sep"></div>
+    <button id="checkBtn" title="Toggle Item Checkboxes">☑</button>
+    <button id="extBtn" title="Toggle File Extensions (.ext)">.ext</button>
+    <button id="hiddenBtn" title="Toggle Hidden Files (dot-files)">👁</button>
+    <button id="previewBtn" title="Toggle Preview & Rename Pane (Alt+P)">▤ Preview</button>
+    <div class="cmd-spacer"></div>
+    <button id="themeBtn" title="Toggle Dark / Light Mode">🌙</button>
+    <button id="settingsBtn" title="Settings, Appearance, Palettes & Hotkeys">⚙️ Settings</button>
+    <button id="devToolsBtn" title="Developer Tools Console (F12 or Ctrl+Shift+I)">🛠️ Console</button>
+  </div>
+</div>
+<div id="main">
+  <div id="nav"></div>
+  <div id="workspace">
+    <div id="content">
+      <div id="header">
+        <span class="c-name">Name</span>
+        <span class="c-date"><i class="col-resizer" data-col="date"></i>Date modified</span>
+        <span class="c-type"><i class="col-resizer" data-col="type"></i>Type</span>
+        <span class="c-size"><i class="col-resizer" data-col="size"></i>Size</span>
+      </div>
+      <div id="list" class="v-details"></div>
+      <div id="rubber"></div>
+    </div>
+    <div id="splitGrip" class="split-resizer hidden" title="Drag to resize split pane"></div>
+    <div id="splitPane" class="hidden">
+      <div id="splitBar">
+        <button id="spBack" title="Back">←</button>
+        <button id="spUp" title="Up">↑</button>
+        <button id="spHome" title="Home">🏠</button>
+        <input id="spAddr" spellcheck="false" title="Split Pane Path (press Enter)">
+        <select id="spView" title="Split Pane View Mode">
+          <option value="details">Details</option><option value="list">List</option>
+          <option value="tiles">Tiles</option><option value="medium">Medium</option>
+          <option value="large">Large</option><!-- <option value="lens">🔍 Lens</option> -->
+          <option value="landscape">🗺️ Landscape</option>
+        </select>
+        <button id="spSwap" title="Swap with Primary Pane">⇄</button>
+        <button id="spClose" title="Close Split Pane">×</button>
+      </div>
+      <div id="spList" class="v-details"></div>
+    </div>
+  </div>
+  <div id="preview" class="hidden"></div>
+</div>
+<!-- Integrated Terminal Drawer -->
+<div id="termDrawer" class="terminal-drawer" style="display:none">
+  <div class="term-drawer-head">
+    <span class="term-title">📟 Interactive Terminal</span>
+    <select id="termDrawerShell" class="term-shell-sel">
+      <option value="powershell">PowerShell</option>
+      <option value="cmd">Command Prompt (CMD)</option>
+    </select>
+    <button id="termDrawerClear" class="term-btn" title="Clear console">🧹 Clear</button>
+    <button id="termDrawerPopout" class="term-btn" title="Launch external terminal window">↗️ External</button>
+    <button id="termDrawerClose" class="term-btn" title="Close terminal drawer">×</button>
+  </div>
+  <div id="termDrawerBody" class="term-drawer-body">
+    <div class="term-line term-sys">Peek Explorer Integrated Terminal. Type a command and press Enter.</div>
+  </div>
+  <div class="term-drawer-input-row">
+    <span id="termDrawerPrompt" class="term-prompt">PS></span>
+    <input type="text" id="termDrawerInput" class="term-input" placeholder="Type command here… (e.g. dir, ls, git status)" autocomplete="off" spellcheck="false">
+  </div>
+</div>
+<div id="status"></div>
+
+<!-- Settings & Customization Modal -->
+<div id="settingsBackdrop" class="settings-backdrop hidden">
+  <div id="settingsModal" class="settings-dialog">
+    <div class="settings-head">
+      <span class="settings-title">⚙️ Peek Explorer Settings & Customization</span>
+      <button id="settingsClose" class="settings-close-btn" title="Close settings">×</button>
+    </div>
+    <div class="settings-nav">
+      <button class="settings-tab-btn active" data-tab="general">🎨 UI & Appearance</button>
+      <button class="settings-tab-btn" data-tab="landscape">🗺️ Landscape & Fun Modes</button>
+      <button class="settings-tab-btn" data-tab="hotkeys">⌨️ Hotkeys & Behavior</button>
+      <!-- <button class="settings-tab-btn" data-tab="summarizer">🧬 Fractal Summarizer</button> -->
+    </div>
+    <div class="settings-content">
+      <!-- Tab 1: General & UI -->
+      <div class="settings-pane active" data-pane="general">
+        <div class="setting-group">
+          <h3>Interface Theme</h3>
+          <div class="setting-row">
+            <span>Color Theme:</span>
+            <div style="display:inline-flex;gap:8px">
+              <button id="setThemeDark" class="dash-btn">🌙 Dark Mode</button>
+              <button id="setThemeLight" class="dash-btn">☀️ Light Mode</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span>Accent Highlight:</span>
+            <input type="color" id="setAccentColor" value="#0067c0" style="cursor:pointer;border:none;background:none;width:36px;height:24px">
+          </div>
+        </div>
+        <div class="setting-group">
+          <h3>File List Display Options</h3>
+          <div class="setting-row">
+            <label><input type="checkbox" id="setShowExt"> Show File Extensions (.ext)</label>
+          </div>
+          <div class="setting-row">
+            <label><input type="checkbox" id="setShowHidden"> Show Hidden / Dot-files</label>
+          </div>
+          <div class="setting-row">
+            <label><input type="checkbox" id="setShowChecks"> Show Item Selection Checkboxes</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Landscape & Fun Modes -->
+      <div class="settings-pane" data-pane="landscape">
+        <div class="setting-group">
+          <h3>Landscape Canvas Background</h3>
+          <div class="setting-row">
+            <span>Canvas Style:</span>
+            <select id="setLandscapeBg">
+              <option value="grid">Blueprint Grid (Default)</option>
+              <option value="space">Deep Space Dark</option>
+              <option value="plain">Minimal Slate</option>
+              <option value="custom-color">Custom Solid Color</option>
+              <option value="custom-image">Custom Image URL</option>
+            </select>
+          </div>
+          <div class="setting-row" id="setCustomColorRow" style="display:none">
+            <span>Custom Canvas Color:</span>
+            <input type="color" id="setCanvasColorPicker" value="#0f172a" style="cursor:pointer;border:none;background:none;width:36px;height:24px">
+          </div>
+          <div class="setting-row" id="setCustomImageRow" style="display:none">
+            <span>Image URL or Local Path:</span>
+            <input type="text" id="setCanvasImageUrl" placeholder="https://… or C:\images\bg.jpg" style="flex:1;padding:3px 6px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px">
+          </div>
+          <div class="setting-row">
+            <label><input type="checkbox" id="setCanvasReactMode" checked> React Canvas Atmosphere to Dynamic Modes (Disco, Breathing, Rain)</label>
+          </div>
+        </div>
+        <div class="setting-group">
+          <h3>Overall Room Colors, Modes & 5+1 Palettes</h3>
+          <div class="setting-row">
+            <span>Room Color Mode:</span>
+            <select id="setRoomPalette" style="flex:1;max-width:290px">
+              <option value="default">Default (Uniform Theme Palette)</option>
+              <option value="inherit">Inherit Parent Room Color (Shade / Hue Shift)</option>
+              <option value="dna">🧬 DNA Branching Mode (Folder-to-Room Lineage)</option>
+              <option value="rainbow">🌈 Rainbow Spectrum Static (Sequential Load Order)</option>
+              <option value="rainbow-sync">🌊 Rainbow Sync Wave (All Elements Cycle Together)</option>
+              <option value="rainbow-async">🌀 Rainbow Phase Wave (Each Element Offset in Cycle)</option>
+              <option value="skittles">🍬 Skittles Candy Mode (Vibrant Candy Random)</option>
+              <option value="pastel">🌸 Soft Aesthetic Pastel</option>
+              <option value="neon">⚡ Cyberpunk Neon</option>
+              <option value="breathing">🫁 Breathing Mode (Synchronized Pulse to Peak)</option>
+              <option value="rain-puddle">🌧️ Rain Puddle Mode (Field Raindrops & Room Ripples)</option>
+              <option value="disco">🪩 Disco Mode (7-Cycle Asynchronous Dance)</option>
+              <option value="dusco">🌌 Dusco Mode (Dark Saturated Neon Disco)</option>
+              <option value="deep-dusco">🖤 Deep Dusco Mode (Monochrome Greyscale Disco)</option>
+            </select>
+          </div>
+          <div class="setting-row" id="setInheritShiftRow" style="display:none">
+            <span>Inheritance Shift Style:</span>
+            <select id="setInheritShiftMode">
+              <option value="lighter">Lighter Shade per Depth</option>
+              <option value="darker">Darker Shade per Depth</option>
+              <option value="hue-shift">Slight Hue Shift per Depth (+22°)</option>
+              <option value="exact">Exact Parent Color Copy</option>
+            </select>
+          </div>
+          <div class="setting-row" id="setModeSubPaletteRow" style="display:none">
+            <span>Active Mode Palette (5 + Custom):</span>
+            <select id="setModeSubPalette" style="flex:1;max-width:260px"></select>
+          </div>
+          <div class="setting-row" id="setCustomPaletteSwatchesRow" style="display:none">
+            <span>Custom Palette Swatches:</span>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <input type="color" id="setCustomSwatch0" value="#ef4444" style="width:28px;height:22px;border:none;background:none;cursor:pointer">
+              <input type="color" id="setCustomSwatch1" value="#f97316" style="width:28px;height:22px;border:none;background:none;cursor:pointer">
+              <input type="color" id="setCustomSwatch2" value="#eab308" style="width:28px;height:22px;border:none;background:none;cursor:pointer">
+              <input type="color" id="setCustomSwatch3" value="#22c55e" style="width:28px;height:22px;border:none;background:none;cursor:pointer">
+              <input type="color" id="setCustomSwatch4" value="#06b6d4" style="width:28px;height:22px;border:none;background:none;cursor:pointer">
+              <input type="color" id="setCustomSwatch5" value="#3b82f6" style="width:28px;height:22px;border:none;background:none;cursor:pointer">
+              <input type="color" id="setCustomSwatch6" value="#8b5cf6" style="width:28px;height:22px;border:none;background:none;cursor:pointer">
+            </div>
+          </div>
+          <div class="setting-row" id="setBreathDurationRow" style="display:none">
+            <span>Cycle / Breathing Pace:</span>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <input type="range" id="setBreathDuration" min="1" max="360" value="6" step="1" style="flex:1">
+              <input type="number" id="setBreathDurationNum" min="1" max="99999" value="6" style="width:58px;padding:2px 4px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px;font-size:11px">
+              <span style="font-size:11px">s</span>
+            </div>
+          </div>
+          <div class="setting-row" id="setBreathScaleRow" style="display:none">
+            <span>Breath / Ripple Rim Expansion Size:</span>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <input type="range" id="setBreathScale" min="0" max="80" value="20" step="1" style="flex:1">
+              <input type="number" id="setBreathScaleNum" min="0" max="300" value="20" style="width:52px;padding:2px 4px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px;font-size:11px">
+              <span style="font-size:11px">px</span>
+            </div>
+          </div>
+          <div class="setting-row" id="setBreathTargetRow" style="display:none">
+            <span>Breath / Puddle Peak Colors (Rim & Floor):</span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px">Rim <input type="color" id="setBreathTargetColor" value="#ffffff" style="cursor:pointer;border:none;background:none;width:32px;height:22px"></label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px">Floor <input type="color" id="setBreathTargetBgColor" value="#334155" style="cursor:pointer;border:none;background:none;width:32px;height:22px"></label>
+            </div>
+          </div>
+          <div class="setting-row" id="setBreathAffectTilesRow" style="display:none">
+            <label><input type="checkbox" id="setBreathAffectTiles" checked> Allow File / Folder Tiles Inside Rooms to Pulse with Breath & Rain</label>
+          </div>
+          <div id="setRainPuddleGroup" style="display:none;flex-direction:column;gap:8px;padding:8px;border:1px dashed var(--border);border-radius:6px">
+            <div class="setting-row">
+              <span>Raindrop Spawn Interval (Min / Max):</span>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="number" id="setPuddleMin" min="0.2" max="9999" step="0.5" value="2" style="width:54px;padding:2px 4px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px;font-size:11px">
+                <span>to</span>
+                <input type="number" id="setPuddleMax" min="0.5" max="9999" step="0.5" value="8" style="width:54px;padding:2px 4px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px;font-size:11px">
+                <span style="font-size:11px">s</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span>Single Puddle Ripple Duration:</span>
+              <div style="display:flex;align-items:center;gap:8px;flex:1">
+                <input type="range" id="setPuddleDuration" min="1" max="360" value="5" step="1" style="flex:1">
+                <input type="number" id="setPuddleDurationNum" min="1" max="9999" value="5" style="width:54px;padding:2px 4px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px;font-size:11px">
+                <span style="font-size:11px">s</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span>Max Simultaneous Ripples:</span>
+              <div style="display:flex;align-items:center;gap:8px;flex:1">
+                <input type="range" id="setPuddleMaxConcurrent" min="1" max="50" value="4" step="1" style="flex:1">
+                <input type="number" id="setPuddleMaxConcurrentNum" min="1" max="200" value="4" style="width:50px;padding:2px 4px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px;font-size:11px">
+              </div>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span>Room Glow Intensity:</span>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <input type="range" id="setRoomGlow" min="0" max="100" value="50" step="5" style="flex:1">
+              <span id="setRoomGlowVal" style="font-size:11px;min-width:32px">50%</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span>Room Glow Range (Spread):</span>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <input type="range" id="setRoomGlowRange" min="0" max="100" value="18" step="1" style="flex:1">
+              <input type="number" id="setRoomGlowRangeNum" min="0" max="300" value="18" style="width:52px;padding:2px 4px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px;font-size:11px">
+              <span style="font-size:11px">px</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span>Default Frame & Background:</span>
+            <div style="display:flex;align-items:center;gap:12px">
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px">Frame <input type="color" id="setDefaultFrameColor" value="#0067c0" style="cursor:pointer;border:none;background:none;width:32px;height:22px"></label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px">Floor <input type="color" id="setDefaultBgColor" value="#1e293b" style="cursor:pointer;border:none;background:none;width:32px;height:22px"></label>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span>Background Opacity:</span>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <input type="range" id="setRoomBgOpacity" min="10" max="100" value="100" step="5" style="flex:1">
+              <span id="setRoomBgOpacityVal" style="font-size:11px;min-width:36px">100%</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span>Selected / Open Folder Color:</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <label style="font-size:11px"><input type="checkbox" id="setUseCustomSelectedFolder"> Manual Override</label>
+              <input type="color" id="setSelectedFolderColor" value="#0078d4" style="cursor:pointer;border:none;background:none;width:32px;height:22px">
+            </div>
+          </div>
+          <div class="setting-row">
+            <span>Active Room Focus Border:</span>
+            <input type="color" id="setActiveRoomColor" value="#00f0ff" style="cursor:pointer;border:none;background:none;width:36px;height:24px">
+          </div>
+          <div class="setting-row">
+            <span>Global Locking:</span>
+            <div style="display:flex;gap:12px;font-size:12px">
+              <label><input type="checkbox" id="setLockFrame"> Lock Room Frame Color</label>
+              <label><input type="checkbox" id="setLockBg"> Lock Room Background Color</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>Specific Room Customizer</h3>
+          <div class="setting-row">
+            <span>Target Room:</span>
+            <select id="setSpecificRoomSelect" style="flex:1;max-width:220px;padding:3px 6px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-bd);border-radius:4px">
+              <option value="">(Select or Click any Room)</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <span>This Room Frame Color:</span>
+            <input type="color" id="setSpecificFrameColor" value="#0067c0" style="cursor:pointer;border:none;background:none;width:36px;height:24px">
+          </div>
+          <div class="setting-row">
+            <span>This Room Background:</span>
+            <input type="color" id="setSpecificBgColor" value="#1e293b" style="cursor:pointer;border:none;background:none;width:36px;height:24px">
+          </div>
+          <div class="setting-row">
+            <span>This Room Locks:</span>
+            <div style="display:flex;gap:12px;font-size:12px">
+              <label><input type="checkbox" id="setSpecificLockFrame"> Lock Frame</label>
+              <label><input type="checkbox" id="setSpecificLockBg"> Lock Background</label>
+            </div>
+          </div>
+          <div class="setting-row" style="margin-top:4px">
+            <button id="setSpecificResetBtn" class="dash-btn" style="padding:3px 12px;font-size:11px">Reset This Room</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>Performance & Memory</h3>
+          <div class="setting-row">
+            <label><input type="checkbox" id="setAutoSleep" checked> Auto-Sleep Background Tabs & Off-Screen Islands (RAM Saver)</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Hotkeys & Behavior -->
+      <div class="settings-pane" data-pane="hotkeys">
+        <div class="setting-group">
+          <h3>Inline Rename Behavior</h3>
+          <div class="setting-row">
+            <label><input type="checkbox" id="setHoldRenameEnabled" checked> Enable Hold-to-Rename on row click-and-hold</label>
+          </div>
+          <div class="setting-row" id="setHoldRenameDelayRow">
+            <span>Hold Duration:</span>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <input type="range" id="setHoldRenameDelay" min="250" max="1500" value="550" step="50" style="flex:1">
+              <span id="setHoldRenameDelayVal" style="font-size:11px;min-width:45px">550ms</span>
+            </div>
+          </div>
+        </div>
+        <div class="setting-group">
+          <h3>Navigation & Landscape Hotkeys</h3>
+          <table class="hotkey-table">
+            <tr><td><kbd>Shift + Scroll</kbd></td><td>Always Zoom Camera In / Out in Landscape</td></tr>
+            <tr><td><kbd>Alt + Click & Drag</kbd></td><td>Global Pan camera across entire landscape (anywhere)</td></tr>
+            <tr><td><kbd>Alt + Scroll</kbd></td><td>Scale tile & icon size inside room without camera zoom</td></tr>
+            <tr><td><kbd>Alt + Shift + Scroll</kbd></td><td>Scale room box width & height dimensions</td></tr>
+            <tr><td><kbd>Ctrl + Shift</kbd></td><td>Hold for Lens Loupe magnifier around cursor</td></tr>
+            <tr><td><kbd>Double-Click File</kbd></td><td>Open File Viewer Island inside Landscape</td></tr>
+            <tr><td><kbd>Shift + Double-Click</kbd></td><td>Open file in Native Windows default app</td></tr>
+            <tr><td><kbd>Right-Click Canvas</kbd></td><td>Spawn Folder Island, Browser, or HTML Viewer at click location</td></tr>
+            <tr><td><kbd>Drag to Empty Space</kbd></td><td>Create subfolder, move dragged files, and spawn child island</td></tr>
+            <tr><td><kbd>Hold / F2</kbd></td><td>Inline Rename active file or folder</td></tr>
+            <tr><td><kbd>Alt + P</kbd></td><td>Toggle Preview Pane</td></tr>
+            <tr><td><kbd>Alt + S</kbd></td><td>Toggle Split Pane (Left / Right / Up / Down)</td></tr>
+            <tr><td><kbd>Ctrl + T</kbd> / <kbd>Ctrl + W</kbd></td><td>New Tab / Close Active Tab</td></tr>
+            <tr><td><kbd>Middle-Click</kbd></td><td>Open item in new background tab</td></tr>
+            <tr><td><kbd>Ctrl + Shift + N</kbd></td><td>Create New Folder without view reset</td></tr>
+            <tr><td><kbd>Ctrl + F</kbd></td><td>Focus Live Filter Search Box</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 4: Summarizer Engine (Commented out per user request - preserved for later)
+      <div class="settings-pane" data-pane="summarizer">
+        <div class="setting-group">
+          <h3>Fractal Polytrope Summarizer</h3>
+          <p style="font-size:11.5px;color:var(--muted);line-height:1.5">
+            Extracts document invariant cores algorithmically across the 7 Interrogative Reality Planes (Q1 Who, Q2 What, Q3 Where, Q4 Why, Q5 How, Q6 Cause, Q7 Effect).
+            Runs 100% locally in JavaScript with zero external tokens and zero latency.
+          </p>
+          <div class="setting-row">
+            <label><input type="checkbox" id="setAutoSummarize" checked> Show Fractal Summary Tab in Preview Pane for text/markdown</label>
+          </div>
+        </div>
+      </div>
+      -->
+    </div>
+    <div class="settings-foot">
+      <button id="settingsSaveBtn" class="dash-btn" style="background:#0284c7;color:#fff;border:none;padding:5px 16px;font-weight:600">Apply & Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="gluon_dictionary.js"></script>
+<script src="gluon_engine.js"></script>
+<script src="fractal_summarizer.js"></script>
+<script src="renderer.js"></script>
+</body></html>

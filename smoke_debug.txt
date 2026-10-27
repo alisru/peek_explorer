@@ -1,0 +1,1 @@
+READY ["E:\\Vector Field Theory\\peek_explorer\\node_modules\\electron\\dist\\electron.exe","E:\\Vector Field Theory\\peek_explorer"]

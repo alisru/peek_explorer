@@ -1,0 +1,128 @@
+Command exited with code 0.
+
+Command output:
+
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:15:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:16:  2. [Agent 
+Great-Granddaughter: Polytrope-Gauge & Agent Polytrope-Splicer]
+> E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:17:     - The 7 
+Planes of Reality across the 42-Structure:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:18:       Q1 (Who - 
+Metaphysical Driver), Q2 (+x Possible), Q3 (-x Physical),
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:19:       Q4 (+y 
+Lyrical), Q5 (-y Logical), Q6 (+z Cause), Q7 (-z Effect).
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:20:     - 
+Non-Commutative Directional Gauge Friction (Constructive <= 1.0 vs Inverted Leaps >= 2.4).
+> E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:21:     - 3-Tier 
+Fractal Polytrope Density Field (7 -> 49 -> 343 subplanes).
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:22:     - Cognitive 
+Confusion Reduction & Pub-Test Translation Engine.
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:23:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:24:  3. [Agent 
+Great-Grandkin: Lexicon-Kernel]
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:25:     - 500-Lemma 
+Scaled Empirical Gluon Dictionary with continuous magnitude graphs
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:26:       across all 
+5 tiers (Guaranteed +W, Possible +A, Metaphorical +L, Forbidden -X, Precluded -N).
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:27:     - Vectorized 
+Sub-Millisecond Kernel Attention.
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:28:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:29:  4. [Production 
+Document Merge & De-Duplication Synthesizer]
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:30:     - Two-Tiered 
+Topological Manifold & Complete-Linkage Clustering (d < 0.48).
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:31:     - 
+Conversational Intron Splicing (>60% chat noise de-duplication).
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:32:     - 
+Luminescence-guided Exon Sequencing (F_k -> B_{k+1}) with zero topic overlap.
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:33:     - Unicode & 
+Glyph Remediation ((upsilon, psi), etc.).
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:34:"""
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:35:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:36:import os
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:183:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:184:# 
+============================================================================
+> E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:185:# 3. THE 7 PLANES 
+OF REALITY & 42-STRUCTURE GAUGE FRICTION
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:186:# 
+============================================================================
+> E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:187:PLANES = {
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:188:    "Q1": "Who 
+(Metaphysical Driver)",
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:189:    "Q2": "What 
+(Possible +x)",
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:190:    "Q3": "Where 
+(Physical -x)",
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:191:    "Q4": "Why 
+(Lyrical +y)",
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:192:    "Q5": "How 
+(Logical -y)",
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:193:    "Q6": "Cause 
+(Historical +z)",
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:194:    "Q7": "Effect 
+(Emotive -z)"
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:195:}
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:196:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:197:PLANE_KEYWORDS = {
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:198:    "Q1": {"who", 
+"agent", "will", "i", "subject", "divine", "person", "ego", "self", "soul", "mind", "sovereign", "decide"},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:199:    "Q2": 
+{"what", "possible", "potential", "faith", "probability", "future", "could", "perhaps", "horizon", "superposition"},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:200:    "Q3": 
+{"where", "physical", "matter", "space", "distance", "body", "flesh", "ground", "earth", "sensor", "location"},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:201:    "Q4": {"why", 
+"lyrical", "meaning", "purpose", "resonance", "beauty", "destiny", "symbol", "crucible", "heart", "calling"},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:202:    "Q5": {"how", 
+"logical", "count", "proof", "law", "axiom", "formal", "equation", "theorem", "rule", "consistency", "derive"},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:333:    {"id": 
+"A3_cartesian_plane", "title": "Part III: The Two-Axis Moral and Will Topology (upsilon, psi)", "keywords": 
+["cartesian", "upsilon", "psi", "moral plane", "greater good", "greatest lie", "lesser good", "greater evil", "0.5 
+zone", "perceptual inversion"]},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:334:    {"id": 
+"A4_stress_tensor", "title": "Part IV: Structural Integrity: The Hegemonic Stress Tensor", "keywords": ["stress 
+tensor", "igneous stones", "fired bricks", "foundationalism", "coherentism", "collapse under pressure", "forensic 
+stress"]},
+> E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:335:    {"id": 
+"A5_7planes_framework", "title": "Part V: The 7 Planes of Reality (The Q-Tensor) & 42-Structure", "keywords": ["7 
+planes", "q-tensor", "phenomenological reduction", "who", "what", "where", "why", "how", "cause", "effect", "driver"]},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:336:    {"id": 
+"A6_human_crucible", "title": "Part VI: The Human Crucible: Neural Entropy & The Law of Rising Hearts", "keywords": 
+["crucible", "withering of ideas", "mess of confusion", "predictive processing", "allostatic load", "law of rising 
+hearts", "metanoia"]}
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:337:]
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:338:
+  E:\Vector Field Theory\VFT Docs\_VFT 
+MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:339:THEMATIC_BASINS_MATH = [
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:340:    {"id": 
+"B1_indef_object", "title": "Chapter 1: The INDEF Object: Shells and the Infinitesimal Heartbeat", "keywords": ["indef 
+object", "x = [x] + x_chi", "definitive state", "infinitesimal field", "heartbeat of reality", "non-standard 
+analysis"]},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:341:    {"id": 
+"B2_operational_calculus", "title": "Chapter 2: Operational Generative Calculus & Instantaneous Resolution", 
+"keywords": ["infinity mirror", "instantaneous resolution", "network protocol", "unified circle", "physical 
+interactions", "operators as physical"]},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:342:    {"id": 
+"B3_chi_infinitesimals", "title": "Chapter 3: Holographic Chi-Infinitesimals and Conservation", "keywords": 
+["chi-chain", "social infinitesimal", "holographic infinitesimal", "continuum limits", "chi-infinitesimal 
+integration"]},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:343:    {"id": 
+"B4_constructors", "title": "Chapter 4: INDEF Constructors: Integer, Fractal, and Hyperreal Systems", "keywords": 
+["constructor", "integer constructor", "fractal constructor", "hyperreal definition", "zfc", "forwards 
+infinitesimal"]},
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:344:    {"id": 
+"B5_geometric_physical", "title": "Chapter 5: Geometric and Physical Realization: Pi, Time, and Zeno", "keywords": ["8 
+adjacency", "pi as the geometric", "indef circle", "time dilation", "zeno", "time as the infinitesimal", "1infinity 
+deficit"]}
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:345:]
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:346:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:347:def 
+clean_remediate_text(raw_text: str) -> str:
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:348:    t = 
+raw_text.replace("(I., I^)", r"$(\upsilon, \psi)$").replace("(I.,I^)", r"$(\upsilon, \psi)$")
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:349:    t = 
+t.replace("x_I", r"$x_\chi$").replace('I"H', r"$\Delta H$").replace("+'", r"\to").replace("+->", r"\to")
+  E:\Vector Field Theory\VFT Docs\_VFT MD\Physics\semantic_gluon_dna\unified_gluon_dna_engine.py:350:    t = 
+re.sub(r"\bEpoch[A-Za-z0-9]*\b", "Epoch�", t)
+
+
