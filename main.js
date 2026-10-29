@@ -4,6 +4,13 @@ const path = require('path');
 const os = require('os');
 const { execFile, spawn } = require('child_process');
 
+const _crashLog = path.join(__dirname, '_main_crash.log');
+try { fs.writeFileSync(_crashLog, 'MAIN INIT\n'); } catch {}
+process.on('uncaughtException', err => {
+  try { fs.appendFileSync(_crashLog, 'UNCAUGHT: ' + (err.stack || err) + '\n'); } catch {}
+});
+
+
 // ---- Saved settings (view, sort, group, window size, tab session, column widths, cached pins, scripts, bookmarks, recent, newTabTarget) ----
 // Portable data mode: if packaged and a 'data' directory exists adjacent to the executable, store user settings locally
 const portableDataDir = path.join(path.dirname(process.execPath), 'data');
@@ -17,7 +24,16 @@ function writeSettings(patch) {
   try { fs.mkdirSync(path.dirname(settingsFile()), { recursive: true }); fs.writeFileSync(settingsFile(), JSON.stringify({ ...readSettings(), ...patch }, null, 2)); }
   catch (e) { console.warn('settings not saved:', e.message); }
 }
-ipcMain.handle('getSettings', () => readSettings());
+ipcMain.handle('getSettings', async () => {
+  try {
+    const p = settingsFile();
+    if (!fs.existsSync(p)) return {};
+    const data = await fs.promises.readFile(p, 'utf8');
+    return JSON.parse(data) || {};
+  } catch (err) {
+    return {};
+  }
+});
 ipcMain.handle('saveSettings', (_e, patch) => { writeSettings(patch); return true; });
 
 // ---- Shared clipboard across all Peek Explorer windows + Windows OS FileDropList ----
@@ -58,7 +74,9 @@ function createWindow(opts = {}) {
   w.setMenuBarVisibility(false);
   w.setAutoHideMenuBar(false);
   w.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-    console.log(`[Renderer ${level}]`, message, line ? `(${sourceId}:${line})` : '');
+    const logLine = `[Renderer ${level}] ${message} ${line ? `(${sourceId}:${line})` : ''}\n`;
+    console.log(logLine.trim());
+    try { fs.appendFileSync(path.join(__dirname, '_renderer_console.log'), logLine); } catch {}
   });
   w.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
@@ -72,6 +90,7 @@ function createWindow(opts = {}) {
   w.on('close', saveBounds);
   w.on('closed', () => { windowCount--; });
   w.loadFile('index.html', { query: { primary: primary ? '1' : '0', ...(opts.path ? { path: opts.path } : {}) } });
+  w.webContents.openDevTools({ mode: 'detach' });
   return w;
 }
 ipcMain.handle('newWindow', (_e, p) => { createWindow({ path: p }); return true; });
@@ -110,17 +129,46 @@ ipcMain.handle('folderSize', async (_e, dir) => {
   return { bytes, files, folders };
 });
 
-// Safe text preview (first 16 KB) for the preview pane
+// Safe text preview (up to 512 KB) for the preview pane & inline editor
 ipcMain.handle('readPreview', async (_e, p) => {
   try {
+    const stat = await fs.promises.stat(p);
+    const maxLen = Math.min(stat.size || 0, 524288);
+    if (maxLen === 0) return { text: '', fullSize: 0, truncated: false };
     const fh = await fs.promises.open(p, 'r');
-    const buf = Buffer.alloc(16384);
-    const { bytesRead } = await fh.read(buf, 0, 16384, 0);
+    const buf = Buffer.alloc(maxLen);
+    const { bytesRead } = await fh.read(buf, 0, maxLen, 0);
     await fh.close();
     const slice = buf.subarray(0, bytesRead);
-    if (slice.includes(0)) return { binary: true };
-    return { text: slice.toString('utf8') };
+    if (slice.subarray(0, Math.min(bytesRead, 8192)).includes(0)) return { binary: true };
+    return { text: slice.toString('utf8'), fullSize: stat.size, truncated: stat.size > maxLen };
   } catch (e) { return { error: String(e.message || e) }; }
+});
+
+ipcMain.handle('writeTextFile', async (_e, p, content) => {
+  try {
+    await fs.promises.writeFile(p, String(content ?? ''), 'utf8');
+    const s = await fs.promises.stat(p);
+    return { ok: true, size: s.size, mtime: s.mtimeMs };
+  } catch (e) { return { error: String(e.message || e) }; }
+});
+
+ipcMain.handle('getResourceMetrics', () => {
+  try {
+    const metrics = app.getAppMetrics();
+    let totalWorkMB = 0;
+    let totalPrivateMB = 0;
+    const procs = metrics.map(m => {
+      const wsMB = +((m.memory?.workingSetSize || 0) / 1024).toFixed(1);
+      const privMB = +((m.memory?.privateBytes || 0) / 1024).toFixed(1);
+      totalWorkMB += wsMB;
+      totalPrivateMB += privMB;
+      return { type: m.type, pid: m.pid, wsMB, privMB, cpu: +(m.cpu?.percentCPUUsage || 0).toFixed(1) };
+    });
+    return { totalWorkMB: +totalWorkMB.toFixed(1), totalPrivateMB: +totalPrivateMB.toFixed(1), procs };
+  } catch (e) {
+    return { totalWorkMB: 0, totalPrivateMB: 0, procs: [], error: String(e.message || e) };
+  }
 });
 
 ipcMain.handle('open', (_e, p) => shell.openPath(p));

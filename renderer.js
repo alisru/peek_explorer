@@ -1,3 +1,16 @@
+if (window.api && window.api.writeTextFile) {
+  window.api.writeTextFile('e:/Vector Field Theory/peek_explorer/_renderer_started.txt', 'STARTED AT ' + new Date().toISOString());
+}
+console.log('%c[PEEK-BOOT:1] >>> renderer.js script execution started <<<', 'background: #0284c7; color: #fff; font-size: 13px; font-weight: bold; padding: 2px 6px; border-radius: 3px');
+console.log('[PEEK-BOOT:1] document.readyState at script start:', document.readyState);
+console.log('[PEEK-BOOT:1] window.api available?:', typeof window.api !== 'undefined');
+if (typeof window.api !== 'undefined') {
+  console.log('[PEEK-BOOT:1] window.api keys:', Object.keys(window.api));
+} else {
+  console.warn('[PEEK-BOOT:1] WARNING: window.api is UNDEFINED! Context isolation or preload script issue?');
+}
+console.log('[PEEK-BOOT:1] location:', { href: window.location.href, search: window.location.search, pathname: window.location.pathname });
+
 const $ = id => document.getElementById(id);
 const HOME_URI = 'peek://home';
 const IMG = /\.(png|jpe?g|gif|webp|bmp|jfif|svg|ico)$/i;
@@ -12,7 +25,7 @@ window.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault
 // Global Error & Promise Rejection Reporting
 function reportError(err) {
   const msg = err && (err.stack || err.message || err.reason || String(err));
-  console.error('[Peek Explorer Error]', msg);
+  console.error('%c[PEEK-ERROR]', 'background: #ef4444; color: #fff; font-weight: bold; padding: 2px 4px', msg);
   const status = $('status');
   if (status) {
     status.innerHTML = `
@@ -31,7 +44,7 @@ function reportError(err) {
       };
     }
     const devBtn = status.querySelector('#openConsoleBtn');
-    if (devBtn) devBtn.onclick = e => { e.stopPropagation(); window.api.openDevTools(); };
+    if (devBtn) devBtn.onclick = e => { e.stopPropagation(); if (window.api?.openDevTools) window.api.openDevTools(); };
   }
 }
 window.addEventListener('error', e => reportError(e.error || e.message));
@@ -40,6 +53,30 @@ window.addEventListener('unhandledrejection', e => reportError(e.reason));
 let cur = HOME_URI, hist = [HOME_URI], hi = 0, totalCount = 0;
 let mode = 'details', sortKey = 'name', sortAsc = true, groupKey = 'none';
 let folderViews = {}, defaultView = 'details';
+let kidsLayouts = {}, kidsRoomSize = {}; // per-folder layout of expanded contents + sub-room sizes
+let kidsDense = {}, denseTop = false;     // dense packing (fill gaps around sub-rooms): per folder + top-level list
+
+// Dense packing: grid of fixed-size cells; expanded folders / sub-rooms span whole cells so other items fill the gaps
+function applyDense(c) {
+  const sample = c.querySelector(':scope > .row.item');
+  if (!sample || !sample.offsetWidth) return;
+  const gap = 4, cw = sample.offsetWidth, ch = sample.offsetHeight;
+  c.style.setProperty('--dcw', cw + 'px');
+  c.style.setProperty('--dch', ch + 'px');
+  const cols = Math.max(1, Math.floor((c.clientWidth + gap) / (cw + gap)));
+  for (const k of c.querySelectorAll(':scope > .kids.open')) {
+    if (k.classList.contains('kl-room')) {
+      const sz = kidsRoomSize[k._path] || { w: 520, h: 260 };
+      k.style.width = ''; k.style.height = '';
+      k.style.setProperty('--sc', Math.min(cols, Math.max(1, Math.ceil((sz.w + gap) / (cw + gap)))));
+      k.style.setProperty('--sr', Math.max(1, Math.ceil((sz.h + gap) / (ch + gap))));
+      k.classList.remove('dense-full');
+    } else {
+      k.classList.add('dense-full');
+    }
+  }
+}
+function refreshDense() { document.querySelectorAll('.dense-grid').forEach(applyDense); }
 let landscapePalette = 'default'; // 'default' | 'inherit' | 'dna' | 'rainbow' | 'rainbow-sync' | 'rainbow-async' | 'skittles' | 'pastel' | 'neon' | 'breathing' | 'rain-puddle' | 'disco' | 'dusco' | 'deep-dusco'
 const DEFAULT_CUSTOM_SWATCHES = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6'];
 let modePaletteIndex = {}; // { [modeKey]: 0..5 } (0..4 = 5 Curated Palettes, 5 = Custom Palette)
@@ -65,7 +102,42 @@ let puddleRippleDuration = 5;
 let puddleMaxConcurrent = 4;
 let selectedFolderColor = '#0078d4';
 let useCustomSelectedFolder = false;
+let unselectedFolderColor = '#475569';
+let useCustomUnselectedFolder = false;
 let activeRoomBorderColor = '#00f0ff';
+
+// Global Mouse Drag Distance Guard: suppresses click & auxclick (middle-click) if mouse moved > 5px during button hold (panning!)
+// Only suppress clicks on map world / canvas elements; NEVER suppress clicks on UI buttons, tabs, crumbs, nav, or modals!
+let _mDownX = 0, _mDownY = 0, _lastMouseDragDist = 0;
+window.addEventListener('mousedown', e => {
+  _mDownX = e.clientX;
+  _mDownY = e.clientY;
+  _lastMouseDragDist = 0;
+}, true);
+window.addEventListener('mousemove', e => {
+  if (e.buttons !== 0) {
+    const d = Math.hypot(e.clientX - _mDownX, e.clientY - _mDownY);
+    if (d > _lastMouseDragDist) _lastMouseDragDist = d;
+  }
+}, true);
+window.addEventListener('mouseup', e => {
+  const d = Math.hypot(e.clientX - _mDownX, e.clientY - _mDownY);
+  if (d > _lastMouseDragDist) _lastMouseDragDist = d;
+}, true);
+window.addEventListener('auxclick', e => {
+  if (e.target && e.target.closest('#toolbar, #tabs, #crumbs, #address, #nav, #status, #settingsModal, #termDrawer, select, input, button')) return;
+  if (_lastMouseDragDist > 5) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
+window.addEventListener('click', e => {
+  if (e.target && e.target.closest('#toolbar, #tabs, #crumbs, #address, #nav, #status, #settingsModal, #termDrawer, select, input, button')) return;
+  if (_lastMouseDragDist > 5) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
 let browserAutoSleep = true;
 let autoSummarize = true;
 let breathingDuration = 6;
@@ -388,11 +460,15 @@ let landscapeLayout = {};   // { [dirPath]: { nodes: { [name]: {x,y} }, zones: [
 let splitState = { active: false, dir: 'right', cur: HOME_URI, hist: [HOME_URI], hi: 0, mode: 'details', expanded: new Set() };
 
 async function syncClip() {
-  clip = await window.api.getClip();
-  if (!clip) {
-    const osFiles = await window.api.getOsClipFiles();
-    if (osFiles && osFiles.length) clip = { mode: 'copy', paths: osFiles };
-  }
+  try {
+    if (window.api && typeof window.api.getClip === 'function') {
+      clip = await window.api.getClip();
+    }
+    if (!clip && window.api && typeof window.api.getOsClipFiles === 'function') {
+      const osFiles = await window.api.getOsClipFiles();
+      if (osFiles && osFiles.length) clip = { mode: 'copy', paths: osFiles };
+    }
+  } catch (_) {}
 }
 async function storeClip(c) { clip = c; await window.api.setClip(c); }
 window.addEventListener('focus', syncClip);
@@ -403,26 +479,26 @@ function applyColWidths() {
   document.documentElement.style.setProperty('--w-size', colWidths.size + 'px');
 }
 function applyTheme() {
-  document.body.classList.toggle('dark', darkMode);
-  $('themeBtn').textContent = darkMode ? '☀️' : '🌙';
+  document.body?.classList.toggle('dark', darkMode);
+  if ($('themeBtn')) $('themeBtn').textContent = darkMode ? '☀️' : '🌙';
   document.documentElement.style.setProperty('--room-glow-intensity', roomGlowIntensity / 100);
   document.documentElement.style.setProperty('--breath-target', breathTargetColor || '#ffffff');
 }
 function applyToggles() {
-  $('hiddenBtn').classList.toggle('active', showHidden);
-  $('extBtn').classList.toggle('active', showExt);
-  $('checkBtn').classList.toggle('active', showChecks);
-  document.body.classList.toggle('show-checks', showChecks);
+  $('hiddenBtn')?.classList.toggle('active', showHidden);
+  $('extBtn')?.classList.toggle('active', showExt);
+  $('checkBtn')?.classList.toggle('active', showChecks);
+  document.body?.classList.toggle('show-checks', showChecks);
 }
 function applyPreviewPane() {
-  $('preview').classList.toggle('hidden', !showPreview);
-  $('previewBtn').classList.toggle('active', showPreview);
+  $('preview')?.classList.toggle('hidden', !showPreview);
+  $('previewBtn')?.classList.toggle('active', showPreview);
   if (showPreview) updatePreviewPane();
 }
 function updateNavButtons() {
-  $('back').disabled = hi <= 0;
-  $('fwd').disabled = hi >= hist.length - 1;
-  $('up').disabled = cur === HOME_URI;
+  if ($('back')) $('back').disabled = hi <= 0;
+  if ($('fwd')) $('fwd').disabled = hi >= hist.length - 1;
+  if ($('up')) $('up').disabled = cur === HOME_URI;
 }
 
 const fmtSize = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : n < 1073741824 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1073741824).toFixed(1) + ' GB';
@@ -452,7 +528,164 @@ const baseName = p => {
   return p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 };
 
-// ---- Selection + Status + Preview Pane (with direct rename textbox + video/audio/text preview) ----
+// ---- Selection + Status + Preview Pane + Live Resource Delta Tracker ----
+let _resBaseline = null;
+let _resLastSnap = null;
+const _resDeltaLogs = [];
+
+async function sampleResourceState() {
+  const jsHeapMB = performance?.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : 0;
+  const domNodes = document.getElementsByTagName('*').length;
+  const openRooms = window._landscapeState?.roomMap ? window._landscapeState.roomMap.size : 0;
+  let totalWorkMB = 0;
+  let procs = [];
+  if (window.api?.getResourceMetrics) {
+    try {
+      const m = await window.api.getResourceMetrics();
+      if (m && typeof m.totalWorkMB === 'number') {
+        totalWorkMB = m.totalWorkMB;
+        procs = m.procs || [];
+      }
+    } catch {}
+  }
+  const snap = { ts: Date.now(), jsHeapMB, totalWorkMB, domNodes, openRooms, procs };
+  if (!_resBaseline) _resBaseline = snap;
+  _resLastSnap = snap;
+  return snap;
+}
+
+async function recordResourceAction(actionLabel) {
+  const before = _resLastSnap || await sampleResourceState();
+  setTimeout(async () => {
+    const after = await sampleResourceState();
+    const dWork = +(after.totalWorkMB - before.totalWorkMB).toFixed(1);
+    const dHeap = +(after.jsHeapMB - before.jsHeapMB).toFixed(1);
+    const dDom = after.domNodes - before.domNodes;
+    const sign = n => (n > 0 ? '+' + n : String(n));
+    const entry = `[${new Date().toLocaleTimeString()}] ${actionLabel} → WS: ${after.totalWorkMB}MB (${sign(dWork)}MB) | Heap: ${after.jsHeapMB}MB (${sign(dHeap)}MB) | DOM: ${after.domNodes} (${sign(dDom)}) | Rooms: ${after.openRooms}`;
+    _resDeltaLogs.unshift(entry);
+    if (_resDeltaLogs.length > 35) _resDeltaLogs.pop();
+    renderResourceTelemetryUI();
+    updateStatusBarTelemetry();
+  }, 180);
+}
+
+function updateStatusBarTelemetry() {
+  try {
+    const st = $('status');
+    if (!st || !_resLastSnap) return;
+    let badge = document.getElementById('statusResBadge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.id = 'statusResBadge';
+      badge.style.cssText = 'float:right;font-family:Consolas,monospace;font-size:10.5px;color:var(--muted);cursor:pointer;padding:0 6px;border-left:1px solid var(--border)';
+      badge.title = 'Live Resource Usage (Click to open Resource Monitor in Settings)';
+      badge.onclick = () => {
+        $('settingsBtn')?.click();
+        const lsTab = document.querySelector('.settings-tab-btn[data-tab="landscape"]');
+        if (lsTab) lsTab.click();
+        document.getElementById('resourceTelemetryPanel')?.scrollIntoView({ behavior: 'smooth' });
+      };
+    }
+    const baseDiff = _resBaseline ? +(_resLastSnap.totalWorkMB - _resBaseline.totalWorkMB).toFixed(1) : 0;
+    const diffStr = baseDiff > 0 ? `+${baseDiff}MB` : `${baseDiff}MB`;
+    badge.textContent = `⚡ RAM: ${_resLastSnap.totalWorkMB || _resLastSnap.jsHeapMB}MB (Δ${diffStr}) · Heap: ${_resLastSnap.jsHeapMB}MB · DOM: ${_resLastSnap.domNodes}${_resLastSnap.openRooms ? ' · Rooms: ' + _resLastSnap.openRooms : ''}`;
+    if (st && typeof st.contains === 'function' && !st.contains(badge)) st.appendChild(badge);
+  } catch (_) {}
+}
+
+async function renderResourceTelemetryUI() {
+  try {
+    const sumEl = $('resLiveSummary');
+    const logEl = $('resDeltaLog');
+    if (!sumEl && !logEl) return;
+    const snap = await sampleResourceState();
+    if (sumEl) {
+      const baseWork = _resBaseline ? _resBaseline.totalWorkMB : snap.totalWorkMB;
+      const baseHeap = _resBaseline ? _resBaseline.jsHeapMB : snap.jsHeapMB;
+      const baseDom = _resBaseline ? _resBaseline.domNodes : snap.domNodes;
+      const dW = +(snap.totalWorkMB - baseWork).toFixed(1);
+      const dH = +(snap.jsHeapMB - baseHeap).toFixed(1);
+      const dD = snap.domNodes - baseDom;
+      const s = n => (n > 0 ? '+' + n : String(n));
+      const procStr = (snap.procs || []).map(p => `${p.type}:${p.wsMB}MB`).join(' · ');
+      sumEl.innerHTML =
+        `<div><strong>Total Working Set:</strong> ${snap.totalWorkMB} MB (Baseline Δ: <strong>${s(dW)} MB</strong>) &nbsp;|&nbsp; <strong>JS Heap:</strong> ${snap.jsHeapMB} MB (Δ: ${s(dH)} MB)</div>` +
+        `<div><strong>DOM Nodes:</strong> ${snap.domNodes} (Δ: ${s(dD)}) &nbsp;|&nbsp; <strong>Open Landscape Rooms:</strong> ${snap.openRooms} &nbsp;|&nbsp; <strong>Icon Cache:</strong> ${iconCache.size}</div>` +
+        (procStr ? `<div style="font-size:10px;opacity:0.85">Processes: ${procStr}</div>` : '');
+    }
+    if (logEl && _resDeltaLogs.length) {
+      logEl.innerHTML = _resDeltaLogs.map(l => `<div>${l}</div>`).join('');
+    }
+    updateStatusBarTelemetry();
+  } catch (_) {}
+}
+setInterval(() => { sampleResourceState().then(updateStatusBarTelemetry); }, 6000);
+setTimeout(() => { recordResourceAction('App Initialized'); }, 900);
+
+function buildLightweightTextEditor(filePath, initialText, truncated = false, onSaved = null) {
+  const wrap = document.createElement('div');
+  wrap.className = 'peek-text-editor-wrap';
+  const bar = document.createElement('div');
+  bar.className = 'peek-text-editor-bar';
+  const statusSpan = document.createElement('span');
+  statusSpan.style.color = 'var(--muted)';
+  statusSpan.textContent = truncated ? '⚠️ Large file (>512 KB preview — editing disabled)' : '✏️ Editable (Ctrl+S to save)';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'dash-btn';
+  saveBtn.style.cssText = 'padding:2px 8px;font-size:10.5px';
+  saveBtn.textContent = '💾 Save';
+  saveBtn.disabled = !!truncated;
+  bar.append(statusSpan, saveBtn);
+
+  const area = document.createElement('textarea');
+  area.className = 'peek-text-editor-area';
+  area.spellcheck = false;
+  area.readOnly = !!truncated;
+  area.value = initialText;
+
+  let isDirty = false;
+  const doSave = async () => {
+    if (truncated || !window.api?.writeTextFile) return;
+    statusSpan.textContent = 'Saving…';
+    const r = await window.api.writeTextFile(filePath, area.value);
+    if (r && r.ok) {
+      isDirty = false;
+      statusSpan.style.color = '#10b981';
+      statusSpan.textContent = `✓ Saved (${fmtSize(r.size)}) at ${new Date().toLocaleTimeString()}`;
+      if (onSaved) onSaved(r);
+      recordResourceAction(`Saved text file (${baseName(filePath)})`);
+    } else {
+      statusSpan.style.color = '#ef4444';
+      statusSpan.textContent = `✗ Error: ${r?.error || 'Save failed'}`;
+    }
+  };
+
+  area.addEventListener('input', () => {
+    if (!isDirty) {
+      isDirty = true;
+      statusSpan.style.color = '#f59e0b';
+      statusSpan.textContent = '● Unsaved changes (Press Ctrl+S or click Save)';
+    }
+  });
+  area.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      doSave();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = area.selectionStart, end = area.selectionEnd;
+      area.value = area.value.slice(0, s) + '  ' + area.value.slice(end);
+      area.selectionStart = area.selectionEnd = s + 2;
+    }
+  });
+  saveBtn.onclick = e => { e.stopPropagation(); doSave(); };
+
+  wrap.append(bar, area);
+  return wrap;
+}
+
 const visibleRows = () => [...$('list').querySelectorAll('.row.item, .room-item, .room-file, .room-door, .dash-card')].filter(r => r._item && r.style.display !== 'none' && !r.closest('.collapsed'));
 function updateStatus() {
   if (cur === HOME_URI) {
@@ -462,6 +695,7 @@ function updateStatus() {
     } else {
       $('status').textContent = `Home Dashboard  |  ${scripts.length} script connections  |  ${bookmarks.length} bookmarks`;
     }
+    updateStatusBarTelemetry();
     if (showPreview) updatePreviewPane();
     return;
   }
@@ -477,6 +711,7 @@ function updateStatus() {
     for (const { item } of selected.values()) bytes += item.isDir ? (folderSizeCache.get(item.path) || 0) : (item.size || 0);
     $('status').textContent = `${totalCount} items  |  ${n} items selected${bytes ? '  (' + fmtSize(bytes) + ')' : ''}`;
   }
+  updateStatusBarTelemetry();
   if (showPreview) updatePreviewPane();
 }
 
@@ -570,15 +805,16 @@ async function updatePreviewPane() {
     const btn = document.createElement('button'); btn.className = 'dash-btn'; btn.textContent = 'Calculate folder size';
     btn.onclick = () => calcFolderSize(it, entry.cell);
     box.querySelector('.pv-body').appendChild(btn);
-  } else if (!it.isDir && !IMG.test(it.name) && !VID.test(it.name) && !AUD.test(it.name) && it.size > 0 && it.size <= 5 * 1024 * 1024) {
+  } else if (!it.isDir && !IMG.test(it.name) && !VID.test(it.name) && !AUD.test(it.name) && it.size >= 0 && it.size <= 5 * 1024 * 1024) {
     const res = await window.api.readPreview(it.path);
     if (myToken !== previewToken) return;
     if (res && typeof res.text === 'string') {
       const pvBody = box.querySelector('.pv-body');
       pvBody.innerHTML = '';
-      const pre = document.createElement('pre'); pre.className = 'pv-text';
-      pre.textContent = res.text;
-      pvBody.appendChild(pre);
+      pvBody.appendChild(buildLightweightTextEditor(it.path, res.text, res.truncated, r => {
+        it.size = r.size;
+        it.mtime = r.mtime;
+      }));
     }
   }
 }
@@ -683,57 +919,94 @@ function groupLabelFor(it) {
 
 // Icon pixel size per view. <=24 uses the small shell icon, bigger uses real Windows thumbnails.
 const PX = { details: 16, list: 16, small: 16, content: 32, tiles: 40, medium: 48, large: 96, xl: 190, lens: 64, landscape: 64 };
+const isThumbFile = it => !!(it && !it.isDir && (IMG.test(it.name) || VID.test(it.name)));
+const PER_FILE_ICON_EXT = /\.(exe|lnk|ico|msi|scr|cur|ani)$/i;
+const PLACEHOLDER_FILE_SVG = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#64748b" fill-opacity="0.35" d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/></svg>');
+const PLACEHOLDER_DIR_SVG = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#eab308" fill-opacity="0.55" d="M2 6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/></svg>');
 const iconCache = new Map();
-const MAX_RENDERER_ICON_CACHE = 350;
+const MAX_RENDERER_ICON_CACHE = 600;
+
+function getIconCacheKey(it, reqPx, unique) {
+  if (it.isDir) return 'D|' + reqPx + '|' + it.path;
+  if (isThumbFile(it) && reqPx > 24) return 'T|' + reqPx + '|' + it.path;
+  if (unique || PER_FILE_ICON_EXT.test(it.name)) return 'U|' + it.path;
+  const ext = it.name.includes('.') ? it.name.split('.').pop().toLowerCase() : '_noext';
+  return 'E|' + ext;
+}
+
 async function setIcon(img, it, px = PX[mode], unique = false) {
-  const key = px + '|' + (unique || px > 24 || it.isDir ? it.path : (it.name.includes('.') ? it.name.split('.').pop().toLowerCase() : it.path));
+  if (!it.isDir && px >= 32 && /\.(svg|gif|webp)$/i.test(it.name)) {
+    img.src = fileUrl(it.path);
+    return;
+  }
+  const reqPx = (isThumbFile(it) && px >= 32) ? Math.max(px, 256) : px;
+  const key = getIconCacheKey(it, reqPx, unique);
   if (!iconCache.has(key)) {
     if (iconCache.size >= MAX_RENDERER_ICON_CACHE) {
       const oldest = iconCache.keys().next().value;
       iconCache.delete(oldest);
     }
-    iconCache.set(key, window.api.icon(it.path, it.isDir, px, unique));
+    iconCache.set(key, window.api.icon(it.path, it.isDir, reqPx, unique));
   }
   const url = await iconCache.get(key);
   if (url) img.src = url;
+  else if (!it.isDir && IMG.test(it.name)) img.src = fileUrl(it.path);
+}
+
+let lazyIconObserver = null;
+function ensureLazyIconObserver() {
+  if (lazyIconObserver) return lazyIconObserver;
+  lazyIconObserver = new IntersectionObserver((entries, obs) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const img = entry.target;
+      obs.unobserve(img);
+      if (img._lazyItem) {
+        setIcon(img, img._lazyItem, img._lazyPx, img._lazyUnique);
+        img._lazyItem = null;
+      }
+    }
+  }, { rootMargin: '240px' });
+  return lazyIconObserver;
+}
+
+function setIconLazy(img, it, px = 64, unique = false) {
+  const reqPx = (isThumbFile(it) && px >= 32) ? Math.max(px, 256) : px;
+  const key = getIconCacheKey(it, reqPx, unique);
+  if (iconCache.has(key)) {
+    setIcon(img, it, px, unique);
+    return;
+  }
+  if (!img.src) img.src = it.isDir ? PLACEHOLDER_DIR_SVG : PLACEHOLDER_FILE_SVG;
+  img._lazyItem = it;
+  img._lazyPx = px;
+  img._lazyUnique = unique;
+  ensureLazyIconObserver().observe(img);
 }
 
 function msg(text, depth) {
   const m = document.createElement('div'); m.className = 'msg'; m.style.paddingLeft = (28 + depth * 18) + 'px'; m.textContent = text; return m;
 }
 
-// ---- Live filter + hidden files helper ----
+// ---- Live filter + hidden files helper (In Landscape mode: opens Jump-To Navigator instead of hiding items!) ----
 function applyFilter() {
   const q = filterText.trim().toLowerCase();
+  if (mode === 'landscape' || mode === 'lens') {
+    for (const r of $('list').querySelectorAll('.room-item, .room-file, .room-door')) {
+      if (!r._item) continue;
+      const hiddenBlocked = !showHidden && r._item.name.startsWith('.');
+      r.style.display = hiddenBlocked ? 'none' : '';
+    }
+    if (q && typeof window._openLandscapeJumpModal === 'function') {
+      window._openLandscapeJumpModal(filterText, false);
+    }
+    return;
+  }
   for (const r of $('list').querySelectorAll('.row.item, .room-item, .room-file, .room-door')) {
     if (!r._item) continue;
     const hiddenBlocked = !showHidden && r._item.name.startsWith('.');
     const matchFilter = !q || r._item.name.toLowerCase().includes(q) || (r._item.isDir && expanded.has(r._item.path));
     r.style.display = (!hiddenBlocked && matchFilter) ? '' : 'none';
-  }
-  if (mode === 'landscape') {
-    for (const room of $('list').querySelectorAll('.map-room')) {
-      if (!q) {
-        room.classList.remove('radar-ping');
-      } else {
-        const hasMatch = Array.from(room.querySelectorAll('.room-item')).some(it => it.style.display !== 'none');
-        if (hasMatch) room.classList.add('radar-ping');
-        else room.classList.remove('radar-ping');
-      }
-    }
-    for (const proxy of $('list').querySelectorAll('.lens-proxy')) {
-      if (!q) {
-        proxy.classList.remove('radar-ping');
-      } else {
-        const pPath = proxy.dataset && proxy.dataset.path;
-        const targetRoom = pPath && $('list').querySelector(`.map-room[data-path="${CSS.escape(pPath)}"]`);
-        if (targetRoom && targetRoom.classList.contains('radar-ping')) proxy.classList.add('radar-ping');
-        else proxy.classList.remove('radar-ping');
-      }
-    }
-    if (typeof window._updateLandscapeRadar === 'function') {
-      window._updateLandscapeRadar();
-    }
   }
 }
 
@@ -870,15 +1143,36 @@ function wireDropTarget(el, getTargetDir, onHoverExpand = null) {
       $('status').textContent = `✓ Copied ${validSrcs.length - (r.skipped?.length || 0)} item(s) → "${baseName(dest)}"`;
     }
     if (r.skipped && r.skipped.length) alert('Skipped (already exists or invalid):\n' + r.skipped.join('\n'));
-    show();
+    const affected = [dest, ...validSrcs.map(s => parent(s))];
+    await refreshKeep(affected);
     if (splitState.active) renderSplitPane();
   });
 }
 
 async function renderDir(dir, depth, container, parentCell = null) {
-  const res = await window.api.list(dir);
-  if (res.error) { container.appendChild(msg('(' + res.error + ')', depth)); return 0; }
-  const items = sortItems(res.items);
+  console.log(`%c[PEEK-DIR] renderDir("${dir}", depth=${depth}) called`, 'color: #06b6d4; font-weight: bold');
+  let res = null;
+  try {
+    if (window.api && typeof window.api.list === 'function') {
+      res = await Promise.race([
+        window.api.list(dir),
+        new Promise(r => setTimeout(() => r({ error: 'Timeout reading directory' }), 6000))
+      ]);
+    } else {
+      res = { error: 'File system API not available' };
+    }
+  } catch (err) {
+    res = { error: err.message || String(err) };
+  }
+  console.log(`[PEEK-DIR] window.api.list("${dir}") returned:`, res);
+  if (!res) res = { items: [] };
+  if (res.error) {
+    console.warn(`[PEEK-DIR] Directory error for "${dir}":`, res.error);
+    container.appendChild(msg('(' + res.error + ')', depth));
+    return 0;
+  }
+  const items = sortItems(res.items || []);
+  console.log(`[PEEK-DIR] Rendering ${items.length} items inside container for "${dir}"`);
   if (!items.length) { container.appendChild(msg('(empty)', depth)); return 0; }
 
   if (depth === 0 && groupKey !== 'none') {
@@ -896,18 +1190,27 @@ async function renderDir(dir, depth, container, parentCell = null) {
         const col = gb.classList.toggle('collapsed');
         gh.querySelector('.grp-arrow').textContent = col ? '▸' : '▾';
       };
-      for (const it of gItems) gb.append(...makeItem(it, depth, parentCell));
+      for (const it of gItems) gb.append(...itemNodes(it, depth, parentCell));
       container.append(gh, gb);
     }
   } else {
-    for (const it of items) container.append(...makeItem(it, depth, parentCell));
+    for (const it of items) container.append(...itemNodes(it, depth, parentCell));
   }
   applyFilter();
   return items.length;
 }
 
+// In grid views an expanded folder + its contents form ONE flowing block, so folders sit side by side with regular items (no white space)
+function itemNodes(it, depth, parentCell = null) {
+  const [cell, kids] = makeItem(it, depth, parentCell);
+  if (!isGrid() || !it.isDir) return [cell, kids];
+  const g = document.createElement('div'); g.className = 'grp-fold';
+  g.append(cell, kids);
+  return [g];
+}
 function makeItem(it, depth, parentCell = null) {
-  const cell = document.createElement('div'); cell.className = 'row item';
+  const hasThumb = isThumbFile(it);
+  const cell = document.createElement('div'); cell.className = 'row item' + (hasThumb ? ' has-thumb' : '');
   cell.dataset.isDir = it.isDir ? '1' : '0';
   cell.draggable = true;
   cell._item = it;
@@ -925,8 +1228,8 @@ function makeItem(it, depth, parentCell = null) {
   nmEl.textContent = displayName(it);
   cell.title = it.name;
   const ico = cell.querySelector('.ico');
-  if (PX[mode] > 24) ico.classList.add('photo');
-  setIcon(ico, it);
+  if (PX[mode] > 24 || hasThumb) ico.classList.add('photo');
+  setIcon(ico, it, hasThumb ? Math.max(PX[mode] || 32, 256) : PX[mode]);
 
   const chk = cell.querySelector('.chk');
   chk.addEventListener('click', e => {
@@ -996,14 +1299,70 @@ function makeItem(it, depth, parentCell = null) {
 
   if (it.isDir) {
     const a = cell.querySelector('.arrow');
-    const open = async () => { a.textContent = '▾'; await renderDir(it.path, depth + 1, kids, cell); };
+    // Per-folder layout for the expanded contents: wrap (default) | row | col | room
+    const klBtn = document.createElement('span');
+    klBtn.className = 'kl-btn'; klBtn.textContent = '▦'; klBtn.title = 'Layout of this folder\'s contents';
+    cell.querySelector('.c-name').appendChild(klBtn);
+    const applyKidsLayout = () => {
+      kids._path = it.path;
+      const l = kidsLayouts[it.path] || 'col';
+      kids.classList.remove('kl-row', 'kl-col', 'kl-wrap', 'kl-room');
+      kids.classList.add('kl-' + l);
+      const g = kids.closest('.grp-fold');
+      if (g) {
+        g.classList.toggle('room', l === 'room');
+        g.style.width = ''; g.style.height = '';
+        const sz = kidsRoomSize[it.path];
+        if (l === 'room' && sz) { g.style.width = sz.w + 'px'; g.style.height = sz.h + 'px'; }
+      }
+      kids.style.width = ''; kids.style.height = '';
+      if (l === 'room') {
+        const sz = kidsRoomSize[it.path];
+        if (sz) { kids.style.width = sz.w + 'px'; kids.style.height = sz.h + 'px'; }
+      }
+    };
+    // Dragging the resize corner must not start the rubber-band select box on the list
+    kids.addEventListener('mousedown', e => {
+      if (e.target !== kids || !kids.classList.contains('kl-room')) return;
+      const r = kids.getBoundingClientRect();
+      if (e.clientX > r.right - 22 && e.clientY > r.bottom - 22) e.stopPropagation();
+    });
+    kids.addEventListener('mouseup', () => {
+      if (kidsLayouts[it.path] !== 'room' || !kids.style.width && !kids.offsetWidth) return;
+      const w = Math.round(kids.offsetWidth), h = Math.round(kids.offsetHeight);
+      const old = kidsRoomSize[it.path];
+      if (!old || old.w !== w || old.h !== h) { kidsRoomSize[it.path] = { w, h }; persist(); }
+      refreshDense();
+    });
+    kids.addEventListener('wheel', e => {
+      if (!kids.classList.contains('kl-row') || e.ctrlKey || !e.deltaY || kids.scrollWidth <= kids.clientWidth) return;
+      kids.scrollLeft += e.deltaY; e.preventDefault(); e.stopPropagation();
+    }, { passive: false });
+    klBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const r = klBtn.getBoundingClientRect();
+      const set = l => () => { kidsLayouts[it.path] = l; applyKidsLayout(); refreshDense(); persist(); };
+      const cur_ = kidsLayouts[it.path] || 'col';
+      const mark = l => (cur_ === l ? '● ' : '    ');
+      fillMenu([
+        { label: mark('col') + 'Column under folder (scrolls down)', run: set('col') },
+        { label: mark('row') + 'Single row (scrolls sideways)', run: set('row') },
+        { label: mark('wrap') + 'Wrap grid', run: set('wrap') },
+        { label: mark('room') + 'Sub-room (resizable box)', run: set('room') }
+      ]);
+      placeMenu(r.left, r.bottom + 2);
+    });
+    klBtn.addEventListener('dblclick', e => e.stopPropagation());
+    klBtn.addEventListener('mousedown', e => e.stopPropagation());
+    applyKidsLayout();
+    const open = async () => { a.textContent = '▾'; cell.classList.add('expanded'); await renderDir(it.path, depth + 1, kids, cell); refreshDense(); };
     cell._expand = async () => {
       if (expanded.has(it.path)) return;
       expanded.add(it.path); kids.classList.add('open'); await open(); persist();
     };
     cell._collapse = () => {
       if (!expanded.has(it.path)) return;
-      expanded.delete(it.path); kids.innerHTML = ''; kids.classList.remove('open'); a.textContent = '▸'; persist();
+      expanded.delete(it.path); kids.innerHTML = ''; kids.classList.remove('open'); cell.classList.remove('expanded'); a.textContent = '▸'; persist();
     };
     a.addEventListener('click', async e => {
       e.stopPropagation();
@@ -1019,20 +1378,24 @@ function makeItem(it, depth, parentCell = null) {
 
 // ---- Home Dashboard (`peek://home`) ----
 function renderHomeDashboard(container) {
+  console.log('%c[PEEK-HOME] renderHomeDashboard() called', 'color: #3b82f6; font-weight: bold', { cachedPlaces, container });
   const wrap = document.createElement('div'); wrap.className = 'dash';
 
   const head = document.createElement('div'); head.className = 'dash-head';
   head.innerHTML = `<h2>🏠 Home Dashboard</h2><div style="display:flex;align-items:center;gap:8px"><span style="color:var(--muted)">New tab (+) opens:</span><select id="newTabPref"><option value="home">Home Dashboard</option><option value="userHome">User Home Folder</option><option value="duplicate">Duplicate Current Tab</option></select></div>`;
   const prefSel = head.querySelector('#newTabPref');
-  prefSel.value = newTabTarget;
-  prefSel.onchange = e => { newTabTarget = e.target.value; persist(); };
+  if (prefSel) {
+    prefSel.value = newTabTarget;
+    prefSel.onchange = e => { newTabTarget = e.target.value; persist(); };
+  }
   wrap.appendChild(head);
 
   // 1. Drives with free space bars
   const driveSec = document.createElement('div'); driveSec.className = 'dash-sec';
   driveSec.innerHTML = `<h3>This PC — Drives</h3><div class="dash-grid"></div>`;
   const driveGrid = driveSec.querySelector('.dash-grid');
-  for (const d of cachedPlaces.drives) {
+  const drives = cachedPlaces?.drives || [];
+  for (const d of drives) {
     const used = d.total > 0 ? d.total - d.free : 0;
     const pct = d.total > 0 ? Math.round((used / d.total) * 100) : 0;
     const card = document.createElement('div'); card.className = 'dash-card';
@@ -1050,7 +1413,7 @@ function renderHomeDashboard(container) {
   wrap.appendChild(driveSec);
 
   // 2. Bookmarks (if any) + Quick Access Pins
-  const pins = (cachedPlaces.cachedPins && cachedPlaces.cachedPins.length) ? cachedPlaces.cachedPins : cachedPlaces.places;
+  const pins = (cachedPlaces?.cachedPins && cachedPlaces.cachedPins.length) ? cachedPlaces.cachedPins : (cachedPlaces?.places || []);
   const pinSec = document.createElement('div'); pinSec.className = 'dash-sec';
   pinSec.innerHTML = `<h3>Quick Access Pins (${pins.length})</h3><div class="dash-grid"></div>`;
   const pinGrid = pinSec.querySelector('.dash-grid');
@@ -1201,6 +1564,19 @@ function openScriptsMenu() {
   ]);
   placeMenu(r.left, r.bottom + 2);
 }
+console.log('[PEEK-BOOT:2] Checking core DOM elements before event attachment:');
+console.table({
+  '#list': !!$('list'),
+  '#tabs': !!$('tabs'),
+  '#nav': !!$('nav'),
+  '#crumbs': !!$('crumbs'),
+  '#address': !!$('address'),
+  '#header': !!$('header'),
+  '#status': !!$('status'),
+  '#scriptsBtn': !!$('scriptsBtn'),
+  '#termDrawer': !!$('termDrawer'),
+  '#workspace': !!$('workspace')
+});
 $('scriptsBtn').onclick = e => {
   e.stopPropagation();
   openScriptsMenu();
@@ -1366,7 +1742,10 @@ function stopAddressEdit() {
   updateAddrIcon();
 }
 function renderCrumbs() {
-  const bar = $('crumbs'); bar.innerHTML = '';
+  const bar = $('crumbs');
+  console.log(`[PEEK-CRUMBS] renderCrumbs() executing for cur="${cur}". bar element exists? ${!!bar}`);
+  if (!bar) return;
+  bar.innerHTML = '';
   const homeCrumb = document.createElement('span'); homeCrumb.className = 'crumb';
   homeCrumb.textContent = '🏠 Home';
   homeCrumb.onclick = e => { e.stopPropagation(); go(HOME_URI); };
@@ -1618,38 +1997,69 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   loupeBadge.textContent = '2.2×';
   loupeEl.append(loupeClone, loupeCross, loupeBadge);
 
-  viewport.append(world, innerFrame, marginLayer, marqueeEl, hud, radarWrap, loupeEl);
+  const jumpModal = document.createElement('div');
+  jumpModal.className = 'landscape-jump-modal';
+  jumpModal.innerHTML = `
+    <div class="landscape-jump-head">
+      <span>🔍</span>
+      <input type="text" class="landscape-jump-input" placeholder="Jump to room, folder, or file… (↑/↓/Enter, Esc)" spellcheck="false">
+      <button class="dash-btn lj-close" style="padding:2px 6px;font-size:11px" title="Close (Esc)">×</button>
+    </div>
+    <div class="landscape-jump-list"></div>
+  `;
+
+  viewport.append(world, innerFrame, marginLayer, marqueeEl, hud, radarWrap, loupeEl, jumpModal);
 
   let loupeActive = false;
   let loupePinned = false;
-  let loupeMag = 2.2;
+  let loupeMag = 2.5;
   let lastLoupeMx = 400, lastLoupeMy = 260;
-  const LOUPE_R = 105;
+  let lastClonedWx = NaN, lastClonedWy = NaN;
+  let loupeRaf = null;
+  const LOUPE_R = 180;
 
-  function syncLoupeCloneDOM() {
+  function syncLoupeCloneDOM(wx, wy) {
     loupeClone.innerHTML = '';
-    for (const child of world.children) {
-      const cloned = child.cloneNode(true);
-      if (child.classList && child.classList.contains('map-room')) {
-        const srcBody = child.querySelector('.map-room-body');
-        const dstBody = cloned.querySelector('.map-room-body');
-        if (srcBody && dstBody) dstBody.scrollTop = srcBody.scrollTop;
-      }
+    lastClonedWx = wx;
+    lastClonedWy = wy;
+    const bridgeClone = bridgeSvg.cloneNode(true);
+    loupeClone.appendChild(bridgeClone);
+    const pad = 750;
+    for (const r of roomMap.values()) {
+      if (Math.abs(r.x - wx) > r.w / 2 + pad || Math.abs(r.y - wy) > r.h / 2 + pad) continue;
+      const cloned = r.el.cloneNode(true);
+      cloned.classList.remove('room-offscreen');
+      const srcBody = r.el.querySelector('.map-room-body');
+      const dstBody = cloned.querySelector('.map-room-body');
+      if (srcBody && dstBody) dstBody.scrollTop = srcBody.scrollTop;
       loupeClone.appendChild(cloned);
+    }
+    for (const m of [htmlMap, fileViewerMap, browserMap, terminalMap]) {
+      for (const r of m.values()) {
+        if (Math.abs(r.x - wx) > (r.w || 400) / 2 + pad || Math.abs(r.y - wy) > (r.h || 300) / 2 + pad) continue;
+        const cloned = r.el.cloneNode(true);
+        cloned.classList.remove('room-offscreen');
+        loupeClone.appendChild(cloned);
+      }
     }
   }
 
-  function updateLoupePosition() {
+  function updateLoupePosition(forceSync = false) {
     if (!loupeActive) return;
     const rect = viewport.getBoundingClientRect();
-    loupeEl.style.left = Math.round(lastLoupeMx - LOUPE_R) + 'px';
-    loupeEl.style.top = Math.round(lastLoupeMy - LOUPE_R) + 'px';
+    const lx = Math.round(lastLoupeMx - LOUPE_R);
+    const ly = Math.round(lastLoupeMy - LOUPE_R);
+    loupeEl.style.transform = `translate3d(${lx}px, ${ly}px, 0)`;
     const wx = (lastLoupeMx - rect.width / 2 - camX) / camZoom;
     const wy = (lastLoupeMy - rect.height / 2 - camY) / camZoom;
-    const effScale = +(camZoom * loupeMag).toFixed(3);
+    if (forceSync || isNaN(lastClonedWx) || Math.hypot(wx - lastClonedWx, wy - lastClonedWy) > 260) {
+      syncLoupeCloneDOM(wx, wy);
+    }
+    const baseZoom = Math.max(1.15, camZoom);
+    const effScale = +(baseZoom * (loupeMag / 1.4)).toFixed(3);
     const tx = Math.round(LOUPE_R - wx * effScale);
     const ty = Math.round(LOUPE_R - wy * effScale);
-    loupeClone.style.transform = `translate(${tx}px, ${ty}px) scale(${effScale})`;
+    loupeClone.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${effScale})`;
     loupeBadge.textContent = `${loupeMag.toFixed(1)}×`;
   }
 
@@ -1659,9 +2069,10 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     loupeEl.style.display = loupeActive ? 'block' : 'none';
     hud.querySelector('[data-act="loupe"]')?.classList.toggle('active', loupeActive);
     if (loupeActive) {
-      syncLoupeCloneDOM();
-      updateLoupePosition();
+      lastClonedWx = NaN;
+      updateLoupePosition(true);
     } else {
+      if (loupeRaf) { cancelAnimationFrame(loupeRaf); loupeRaf = null; }
       loupeClone.innerHTML = ''; // Immediately release cloned DOM nodes when Loupe closes
     }
   }
@@ -1686,7 +2097,12 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     const rect = viewport.getBoundingClientRect();
     lastLoupeMx = e.clientX - rect.left;
     lastLoupeMy = e.clientY - rect.top;
-    if (loupeActive) updateLoupePosition();
+    if (loupeActive && !loupeRaf) {
+      loupeRaf = requestAnimationFrame(() => {
+        loupeRaf = null;
+        updateLoupePosition(false);
+      });
+    }
   });
 
   const roomMap = new Map(); // path -> { path, name, parentPath, x, y, w, h, ang, el, depth, subDirs, files }
@@ -1701,22 +2117,34 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     return Math.abs(ax - bx) < (aw + bw) / 2 + pad && Math.abs(ay - by) < (ah + bh) / 2 + pad;
   }
 
-  // Finds a guaranteed non-overlapping (x, y) position for a new Room of size (w, h)
+  // Finds the closest guaranteed non-overlapping (x, y) position for a new Room of size (w, h)
   function findFreeRoomPos(prefX, prefY, w, h, parentX = 0, parentY = 0, prefAng = 0) {
     const all = [...roomMap.values(), ...htmlMap.values(), ...fileViewerMap.values(), ...browserMap.values(), ...terminalMap.values()];
     const fits = (cx, cy) => {
-      for (const r of all) {
+      for (let i = all.length - 1; i >= 0; i--) {
+        const r = all[i];
         if (boxesOverlap(cx, cy, w, h, r.x, r.y, r.w, r.h, CORRIDOR_PAD)) return false;
       }
       return true;
     };
     if (fits(prefX, prefY)) return { x: prefX, y: prefY, ang: prefAng };
 
-    // Spiral outward from (parentX, parentY) starting near prefAng until a 100% collision-free slot is found
-    for (let dist = 420; dist <= 4800; dist += 95) {
-      const steps = Math.max(12, Math.floor((2 * Math.PI * dist) / 140));
+    // 1. Search outward directly from the preferred wall/tile anchor (prefX, prefY) in tight 28px radial steps
+    for (let rDist = 28; rDist <= 1400; rDist += 28) {
+      const steps = Math.max(12, Math.min(48, Math.floor((2 * Math.PI * rDist) / 42)));
       for (let s = 0; s < steps; s++) {
-        // Alternate + / - angle offsets around prefAng so child rooms stay near their parent's direction
+        const offset = (s % 2 === 0 ? 1 : -1) * Math.ceil(s / 2) * ((Math.PI * 2) / steps);
+        const ang = prefAng + offset;
+        const cx = Math.round(prefX + Math.cos(ang) * rDist);
+        const cy = Math.round(prefY + Math.sin(ang) * rDist);
+        if (fits(cx, cy)) return { x: cx, y: cy, ang };
+      }
+    }
+
+    // 2. Fallback: spiral outward from (parentX, parentY) starting immediately at minimum clearance
+    for (let dist = 220; dist <= 16000; dist += 65) {
+      const steps = Math.max(16, Math.min(64, Math.floor((2 * Math.PI * dist) / 110)));
+      for (let s = 0; s < steps; s++) {
         const offset = (s % 2 === 0 ? 1 : -1) * Math.ceil(s / 2) * ((Math.PI * 2) / steps);
         const ang = prefAng + offset;
         const cx = Math.round(parentX + Math.cos(ang) * dist);
@@ -1724,22 +2152,26 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
         if (fits(cx, cy)) return { x: cx, y: cy, ang };
       }
     }
-    return { x: prefX + 500, y: prefY, ang: prefAng };
+    return { x: prefX + 520, y: prefY, ang: prefAng };
   }
 
   // Iterative AABB separation pass: pushes any overlapping rooms apart while keeping Root Room anchored at (0,0)
   function resolveRoomCollisions() {
     const list = [...roomMap.values(), ...htmlMap.values(), ...fileViewerMap.values(), ...browserMap.values(), ...terminalMap.values()];
     if (list.length <= 1) return;
-    for (let iter = 0; iter < 35; iter++) {
+    const maxIter = list.length > 90 ? 10 : (list.length > 45 ? 18 : 35);
+    for (let iter = 0; iter < maxIter; iter++) {
       let movedAny = false;
       for (let i = 0; i < list.length; i++) {
+        const a = list[i];
         for (let j = i + 1; j < list.length; j++) {
-          const a = list[i], b = list[j];
+          const b = list[j];
           const reqX = (a.w + b.w) / 2 + CORRIDOR_PAD;
           const reqY = (a.h + b.h) / 2 + CORRIDOR_PAD;
           const dx = b.x - a.x;
+          if (Math.abs(dx) >= reqX) continue;
           const dy = b.y - a.y;
+          if (Math.abs(dy) >= reqY) continue;
           const ox = reqX - Math.abs(dx);
           const oy = reqY - Math.abs(dy);
           if (ox > 0 && oy > 0) {
@@ -1762,8 +2194,14 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       if (!movedAny) break;
     }
     for (const r of list) {
-      r.el.style.left = r.x + 'px';
-      r.el.style.top = r.y + 'px';
+      if (r._lastAppliedX !== r.x) {
+        r.el.style.left = r.x + 'px';
+        r._lastAppliedX = r.x;
+      }
+      if (r._lastAppliedY !== r.y) {
+        r.el.style.top = r.y + 'px';
+        r._lastAppliedY = r.y;
+      }
       if (r.isHtml) {
         if (!layout.htmlRooms) layout.htmlRooms = {};
         layout.htmlRooms[r.path] = { ...(layout.htmlRooms[r.path] || {}), x: r.x, y: r.y, w: r.w, h: r.h };
@@ -1846,6 +2284,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     if (bodyEl) bodyEl.className = 'map-room-body v-' + eff;
     const sel = r.el.querySelector('.rm-view-sel');
     if (sel) sel.value = viewVal;
+    if (r.dirRows) for (const d of r.dirRows) { d._cachedMidX = undefined; d._cachedMidY = undefined; }
     autoFitRoom(r);
     resolveRoomCollisions();
     drawBridges();
@@ -1861,19 +2300,47 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     for (const b of browserMap.values()) b.el.classList.toggle('active-room', b.url === activeRoomPath);
   }
 
-  function preferredRingPos(index, total, depth, parentX = 0, parentY = 0, parentAngle = 0) {
+  function preferredRingPos(index, total, depth, parentX = 0, parentY = 0, parentAngle = 0, parentEntry = null, subPath = null, childW = 480, childH = 360) {
+    if (parentEntry) {
+      const pw = parentEntry.w || 540;
+      const ph = parentEntry.h || 400;
+      const pad = CORRIDOR_PAD + 4;
+      const folderRow = (subPath && parentEntry.subRowMap) ? parentEntry.subRowMap.get(subPath) : null;
+      if (folderRow && folderRow.offsetWidth > 0) {
+        const bodyEl = parentEntry.el ? parentEntry.el.querySelector('.map-room-body') : null;
+        const scrollTop = bodyEl ? bodyEl.scrollTop : 0;
+        const scale = parentEntry.indoorScale || 1;
+        const midX = folderRow.offsetLeft + folderRow.offsetWidth / 2;
+        const midY = folderRow.offsetTop + folderRow.offsetHeight / 2;
+        const bodyW = bodyEl ? bodyEl.clientWidth : pw;
+        const tileWorldX = Math.round((parentEntry.x - pw / 2) + midX * scale);
+        const tileWorldY = Math.round((parentEntry.y - ph / 2) + 29 + (midY - scrollTop) * scale);
+        // Place immediately outside the nearest horizontal wall (Right wall if tile is in right half or single column, Left wall if in left column)
+        const preferRight = bodyW < 280 ? (index % 2 === 0) : (midX >= bodyW * 0.48);
+        const sideSign = preferRight ? 1 : -1;
+        const prefX = Math.round(parentEntry.x + sideSign * (pw / 2 + childW / 2 + pad));
+        const prefY = tileWorldY;
+        const ang = Math.atan2(prefY - parentEntry.y, prefX - parentEntry.x);
+        return { x: prefX, y: prefY, ang };
+      }
+      // When spawning in batch before DOM layout is measured, hug the 4 walls of parentEntry tightly!
+      const side = index % 4; // 0: Right, 1: Left, 2: Bottom, 3: Top
+      const slot = Math.floor(index / 4);
+      const shift = (slot % 2 === 0 ? 1 : -1) * Math.ceil(slot / 2) * 140;
+      if (side === 0) return { x: Math.round(parentEntry.x + pw / 2 + childW / 2 + pad), y: Math.round(parentEntry.y + shift), ang: 0 };
+      if (side === 1) return { x: Math.round(parentEntry.x - pw / 2 - childW / 2 - pad), y: Math.round(parentEntry.y + shift), ang: Math.PI };
+      if (side === 2) return { x: Math.round(parentEntry.x + shift), y: Math.round(parentEntry.y + ph / 2 + childH / 2 + pad), ang: Math.PI / 2 };
+      return { x: Math.round(parentEntry.x + shift), y: Math.round(parentEntry.y - ph / 2 - childH / 2 - pad), ang: -Math.PI / 2 };
+    }
     if (depth === 1) {
-      const ring = Math.floor(index / 8);
-      const idxInRing = index % 8;
-      const countInRing = Math.min(8, total - ring * 8);
-      const ang = (idxInRing / Math.max(countInRing, 1)) * Math.PI * 2 - Math.PI / 2;
-      const rx = 500 + ring * 440;
-      const ry = 360 + ring * 320;
+      const ang = (index / Math.max(total, 1)) * Math.PI * 2;
+      const rx = 510 + CORRIDOR_PAD;
+      const ry = 380 + CORRIDOR_PAD;
       return { x: Math.round(Math.cos(ang) * rx), y: Math.round(Math.sin(ang) * ry), ang };
     } else {
-      const spread = ((index - (total - 1) / 2) * 0.52);
+      const spread = ((index - (total - 1) / 2) * 0.48);
       const ang = parentAngle + spread;
-      const dist = 440;
+      const dist = 480 + CORRIDOR_PAD;
       return { x: Math.round(parentX + Math.cos(ang) * dist), y: Math.round(parentY + Math.sin(ang) * dist), ang };
     }
   }
@@ -1998,7 +2465,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     }
 
     rm.innerHTML = `
-      <div class="map-room-head" title="Drag to move Room · Double-click header to center camera here">
+      <div class="map-room-head" title="Drag to move Room · Shift+Click header to focus Parent Room · Double-click header to center camera here">
         <span class="rm-title"><span>${depth === 0 ? '🏰' : '🏝️'}</span><span class="rm-name"></span></span>
         <span class="rm-dims">${w}×${h}</span>
         <div class="rm-actions">
@@ -2017,6 +2484,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
           <button data-rm="suball" title="Open or close all subfolder Rooms connected to this Room">📂 Bridges</button>
           <button data-rm="fit" title="Auto-fit Room width & height to its contents">⤢ Fit</button>
           <button data-rm="zoom" title="Zoom/shrink into this Room to inspect its files up close">🔍 Enter</button>
+          ${(depth > 0 || parentPath) ? `<button data-rm="parent" title="Focus Parent Room (or Shift+Click room header)">⬆️ Parent</button>` : ''}
           ${depth > 0 ? `<button data-rm="root" title="Make this folder the main Root Room">🎯 Root</button><button data-rm="close" title="Close this Room">×</button>` : ''}
         </div>
       </div>
@@ -2067,12 +2535,44 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
           <label style="cursor:pointer"><input type="checkbox" class="rm-lock-frame" ${entry.lockFrame ? 'checked' : ''}> Lock Frame</label>
           <label style="cursor:pointer"><input type="checkbox" class="rm-lock-bg" ${entry.lockBg ? 'checked' : ''}> Lock BG</label>
         </div>
+        <div class="rm-color-row" style="border-top:1px solid var(--border);padding-top:6px">
+          <label style="cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" class="rm-cust-unsel-folder" ${useCustomUnselectedFolder ? 'checked' : ''}> Closed Folder:</label>
+          <input type="color" class="rm-unsel-folder-picker" value="${unselectedFolderColor || '#475569'}">
+        </div>
+        <div class="rm-color-row">
+          <label style="cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" class="rm-cust-sel-folder" ${useCustomSelectedFolder ? 'checked' : ''}> Open Folder:</label>
+          <input type="color" class="rm-sel-folder-picker" value="${selectedFolderColor || '#0078d4'}">
+        </div>
         <div style="display:flex;gap:6px;margin-top:2px">
           <button class="dash-btn rm-color-reset" style="flex:1;padding:2px 6px;font-size:10.5px">Reset</button>
         </div>
       `;
       rm.appendChild(popup);
       popup.querySelector('.popup-close').onclick = ev => { ev.stopPropagation(); popup.remove(); };
+      popup.querySelector('.rm-cust-unsel-folder').onchange = ev => {
+        useCustomUnselectedFolder = ev.target.checked;
+        syncDoorwayBadges();
+        persist();
+      };
+      popup.querySelector('.rm-unsel-folder-picker').oninput = ev => {
+        unselectedFolderColor = ev.target.value;
+        useCustomUnselectedFolder = true;
+        popup.querySelector('.rm-cust-unsel-folder').checked = true;
+        syncDoorwayBadges();
+        persist();
+      };
+      popup.querySelector('.rm-cust-sel-folder').onchange = ev => {
+        useCustomSelectedFolder = ev.target.checked;
+        syncDoorwayBadges();
+        persist();
+      };
+      popup.querySelector('.rm-sel-folder-picker').oninput = ev => {
+        selectedFolderColor = ev.target.value;
+        useCustomSelectedFolder = true;
+        popup.querySelector('.rm-cust-sel-folder').checked = true;
+        syncDoorwayBadges();
+        persist();
+      };
       popup.querySelectorAll('.rm-color-swatch').forEach(sw => {
         sw.onclick = ev => {
           ev.stopPropagation();
@@ -2139,16 +2639,22 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       if (anyOpen) {
         for (const sd of entry.subDirs) if (roomMap.has(sd.path)) closeRoomRecursive(sd.path);
       } else {
-        for (let i = 0; i < entry.subDirs.length; i++) {
-          const sd = entry.subDirs[i];
-          const pref = preferredRingPos(i, entry.subDirs.length, depth + 1, entry.x, entry.y, entry.ang);
-          await spawnRoom(sd.path, sd.name, roomPath, depth + 1, pref);
+        const total = entry.subDirs.length;
+        const BATCH_SIZE = 16;
+        for (let bStart = 0; bStart < total; bStart += BATCH_SIZE) {
+          const chunk = entry.subDirs.slice(bStart, bStart + BATCH_SIZE);
+          await Promise.all(chunk.map((sd, idx) => {
+            const i = bStart + idx;
+            const pref = preferredRingPos(i, total, depth + 1, entry.x, entry.y, entry.ang, entry, sd.path);
+            return spawnRoom(sd.path, sd.name, roomPath, depth + 1, pref);
+          }));
         }
         resolveRoomCollisions();
       }
       syncDoorwayBadges();
       drawBridges();
       updateCameraAndLens();
+      persist();
     };
     rm.querySelector('[data-rm="fit"]').onclick = e => {
       e.stopPropagation();
@@ -2169,6 +2675,28 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       e.stopPropagation();
       panToRoom(false);
     };
+    const focusParentRoom = async () => {
+      const pPath = entry.parentPath || parent(roomPath);
+      if (!pPath || pPath === roomPath) return;
+      let parEntry = roomMap.get(pPath);
+      if (!parEntry) {
+        parEntry = await spawnRoom(pPath, baseName(pPath), parent(pPath), Math.max(0, depth - 1), { x: entry.x - 480, y: entry.y });
+        resolveRoomCollisions();
+        syncDoorwayBadges();
+        drawBridges();
+      }
+      if (parEntry) {
+        selectActiveRoom(pPath);
+        camX = -parEntry.x * camZoom;
+        camY = -parEntry.y * camZoom;
+        updateCameraAndLens();
+        persist();
+      }
+    };
+    const parentBtn = rm.querySelector('[data-rm="parent"]');
+    if (parentBtn) {
+      parentBtn.onclick = e => { e.stopPropagation(); focusParentRoom(); };
+    }
     if (depth > 0) {
       rm.querySelector('[data-rm="root"]').onclick = e => { e.stopPropagation(); onNavigate(roomPath); };
       rm.querySelector('[data-rm="close"]').onclick = e => {
@@ -2180,8 +2708,15 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       };
     }
 
-    // Dragging Room by header
+    // Dragging Room by header (Shift+Click focuses Parent Room!)
     const head = rm.querySelector('.map-room-head');
+    head.addEventListener('click', e => {
+      if (e.shiftKey && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SELECT') {
+        e.stopPropagation();
+        e.preventDefault();
+        focusParentRoom();
+      }
+    });
     head.addEventListener('auxclick', e => {
       if (e.button === 1) {
         e.preventDefault(); e.stopPropagation();
@@ -2198,24 +2733,35 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       });
     }
     head.addEventListener('mousedown', e => {
-      if (e.altKey) return; // Allow Alt+Click to pass through for universal global camera pan!
+      if (e.altKey || e.shiftKey) return; // Allow Alt+Click pan & Shift+Click focus parent!
       if (e.button !== 0 || e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
       e.stopPropagation();
       selectActiveRoom(roomPath);
       const sx = e.clientX, sy = e.clientY;
       const ox = entry.x, oy = entry.y;
+      let dragRaf = null;
       const onMove = ev => {
         entry.x = Math.round(ox + (ev.clientX - sx) / camZoom);
         entry.y = Math.round(oy + (ev.clientY - sy) / camZoom);
         rm.style.left = entry.x + 'px';
         rm.style.top = entry.y + 'px';
+        entry._lastAppliedX = entry.x;
+        entry._lastAppliedY = entry.y;
         layout.rooms[roomPath] = { ...(layout.rooms[roomPath] || {}), x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-        drawBridges();
-        updateCameraAndLens();
+        if (!dragRaf) {
+          dragRaf = requestAnimationFrame(() => {
+            dragRaf = null;
+            drawBridges();
+            updateCameraAndLens();
+          });
+        }
       };
       const onUp = () => {
+        if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = null; }
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
+        drawBridges();
+        updateCameraAndLens();
         persist();
       };
       window.addEventListener('mousemove', onMove);
@@ -2229,15 +2775,23 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
         selectActiveRoom(roomPath);
         const sx = e.clientX, sy = e.clientY;
         const startW = entry.w, startH = entry.h;
+        let rzRaf = null;
         const onMove = ev => {
           const nw = doW ? startW + (ev.clientX - sx) / camZoom : entry.w;
           const nh = doH ? startH + (ev.clientY - sy) / camZoom : entry.h;
-          applyRoomSize(entry, nw, nh, false);
-          selectActiveRoom(roomPath);
+          if (!rzRaf) {
+            rzRaf = requestAnimationFrame(() => {
+              rzRaf = null;
+              applyRoomSize(entry, nw, nh, false);
+              selectActiveRoom(roomPath);
+            });
+          }
         };
         const onUp = () => {
+          if (rzRaf) { cancelAnimationFrame(rzRaf); rzRaf = null; }
           window.removeEventListener('mousemove', onMove);
           window.removeEventListener('mouseup', onUp);
+          if (entry.dirRows) for (const d of entry.dirRows) { d._cachedMidX = undefined; d._cachedMidY = undefined; }
           resolveRoomCollisions();
           drawBridges();
           updateCameraAndLens();
@@ -2292,6 +2846,19 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
     wireDropTarget(rm, () => roomPath);
 
+    const bodyElRef = rm.querySelector('.map-room-body');
+    if (bodyElRef) {
+      let scrollBridgeRaf = null;
+      bodyElRef.addEventListener('scroll', () => {
+        if (!scrollBridgeRaf) {
+          scrollBridgeRaf = requestAnimationFrame(() => {
+            scrollBridgeRaf = null;
+            drawBridges();
+          });
+        }
+      }, { passive: true });
+    }
+
     // Populate Room contents: Unified Subfolders and Files
     entry.populate = async () => {
       const res = await window.api.list(roomPath);
@@ -2299,13 +2866,17 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       entry.subDirs = all.filter(i => i.isDir);
       entry.files = all.filter(i => !i.isDir);
       entry.items = [...entry.subDirs, ...entry.files];
+      entry.dirRows = [];
+      entry.subRowMap = new Map();
 
       const bodyEl = rm.querySelector('.map-room-body');
+      const prevBodyScroll = bodyEl.scrollTop;
       bodyEl.innerHTML = '';
 
       if (!entry.items.length) {
         bodyEl.innerHTML = `<span style="color:var(--muted);font-size:10px;padding:4px">(empty room)</span>`;
       } else {
+        const frag = document.createDocumentFragment();
         const dHead = document.createElement('div');
         dHead.className = 'rm-details-head';
         dHead.innerHTML = `
@@ -2314,37 +2885,42 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
           <span class="dh-type">Type</span>
           <span class="dh-size">Size</span>
         `;
-        bodyEl.appendChild(dHead);
+        frag.appendChild(dHead);
 
         const payloadBytes = entry.files.reduce((acc, f) => acc + (f.size || 0), 0);
-      const dimsEl = rm.querySelector('.rm-dims');
-      if (dimsEl) dimsEl.textContent = `${entry.w}×${entry.h} · ${fmtSize(payloadBytes)}`;
+        const dimsEl = rm.querySelector('.rm-dims');
+        if (dimsEl) dimsEl.textContent = `${entry.w}×${entry.h} · ${fmtSize(payloadBytes)}`;
 
-      let dirCounter = 0;
-      const palArr = getActivePaletteColors(landscapePalette);
-      entry.items.forEach((it, itemIdx) => {
+        let dirCounter = 0;
+        const palArr = getActivePaletteColors(landscapePalette);
+        entry.items.forEach((it, itemIdx) => {
           const row = document.createElement('div');
           const isBridged = it.isDir && roomMap.has(it.path);
-          row.className = 'room-item ' + (it.isDir ? 'is-dir' : 'is-file') + (isBridged ? ' bridged' : '');
+          const hasThumb = isThumbFile(it);
+          row.className = 'room-item ' + (it.isDir ? 'is-dir' : 'is-file' + (hasThumb ? ' has-thumb' : '')) + (isBridged ? ' bridged' : '');
           row._item = it;
           row.draggable = true;
           if (it.isDir) {
             const dIdx = dirCounter++;
             row.dataset.subpath = it.path;
             row.dataset.dirIndex = String(dIdx);
+            entry.dirRows.push(row);
+            entry.subRowMap.set(it.path, row);
             const childEntry = roomMap.get(it.path);
             const targetChildColor = (childEntry && childEntry.roomColor)
               ? childEntry.roomColor
               : computeRoomAndChildColor(it.path, entry, dIdx, entry.depth + 1, layout.rooms?.[it.path]);
 
-            const unopenedBase = landscapePalette === 'default'
-              ? (entry.roomColor || defaultFrameColor)
-              : targetChildColor;
+            const unopenedBase = useCustomUnselectedFolder
+              ? unselectedFolderColor
+              : (landscapePalette === 'default'
+                ? (entry.roomColor || defaultFrameColor)
+                : targetChildColor);
             const lighterUnopened = shiftColorShade(unopenedBase, 'lighter', 1);
-            row.style.setProperty('--folder-ambient-bg', colorToRgba(lighterUnopened, 0.08));
-            row.style.setProperty('--folder-ambient-bd', colorToRgba(lighterUnopened, 0.26));
-            row.style.setProperty('--folder-ambient-hover', colorToRgba(unopenedBase, 0.16));
-            row.style.setProperty('--folder-ambient-bd-hover', colorToRgba(unopenedBase, 0.48));
+            row.style.setProperty('--folder-ambient-bg', colorToRgba(lighterUnopened, useCustomUnselectedFolder ? 0.28 : 0.08));
+            row.style.setProperty('--folder-ambient-bd', colorToRgba(unopenedBase, useCustomUnselectedFolder ? 0.72 : 0.26));
+            row.style.setProperty('--folder-ambient-hover', colorToRgba(unopenedBase, useCustomUnselectedFolder ? 0.38 : 0.16));
+            row.style.setProperty('--folder-ambient-bd-hover', colorToRgba(unopenedBase, useCustomUnselectedFolder ? 0.9 : 0.48));
 
             const openedBase = useCustomSelectedFolder ? selectedFolderColor : targetChildColor;
             const darkerOpened = shiftColorShade(openedBase, 'darker', 1);
@@ -2352,6 +2928,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
             row.style.setProperty('--child-folder-bd', colorToRgba(openedBase, 0.82));
             row.style.setProperty('--child-folder-hover', colorToRgba(darkerOpened, 0.46));
             row.style.setProperty('--child-folder-glow', colorToRgba(openedBase, 0.55));
+            row._badgeStateKey = `${isBridged}|${landscapePalette}|${useCustomUnselectedFolder}|${unopenedBase}|${useCustomSelectedFolder}|${openedBase}`;
           } else if (landscapePalette === 'rainbow') {
             // In Static Rainbow mode, file tiles also receive sequential rainbow colors in load order
             const seqCol = palArr[(entry.depth + itemIdx) % palArr.length];
@@ -2366,31 +2943,64 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
               <span class="nm"></span>
               <span class="c-tile-sub">${it.isDir ? 'File folder' : fmtSize(it.size)}</span>
             </div>
-            ${it.isDir ? `<span class="rm-bridge-indicator ${isBridged ? 'bridged' : ''}" title="${isBridged ? 'Island room is open on map (Click to close)' : 'Click to open island room on map'}">${isBridged ? '🏝️' : '🌉'}</span>` : ''}
+            ${it.isDir ? `<span class="rm-focus-child-btn" title="Focus child room (or open & focus) · Shift+Click folder">🎯</span><span class="rm-bridge-indicator ${isBridged ? 'bridged' : ''}" title="${isBridged ? 'Island room is open on map (Click to close)' : 'Click to open island room on map'}">${isBridged ? '🏝️' : '🌉'}</span>` : ''}
             <span class="c-date">${fmtDate(it.mtime)}</span>
             <span class="c-type">${typeOf(it)}</span>
             <span class="c-size">${it.isDir ? '--' : fmtSize(it.size)}</span>
           `;
           row.querySelector('.nm').textContent = displayName(it);
-          row.title = `${it.name}${it.isDir ? ' (Folder)' : ' (' + fmtSize(it.size) + ')'}\n• Single-click: ${it.isDir ? 'Open Room Island' : 'Open file'}\n• Hold-click / F2: Rename`;
-          setIcon(row.querySelector('img'), it, 32);
+          row.title = `${it.name}${it.isDir ? ' (Folder)\n• Click: Toggle Room open/close\n• Shift+Click or 🎯: Focus Room (or open & focus)' : ' (' + fmtSize(it.size) + ')\n• Double-click / Middle-click: Open in Landscape\n• Shift+Double-click: Open in native app'}\n• Hold-click / F2: Rename`;
+          setIconLazy(row.querySelector('img'), it, hasThumb ? 256 : 64);
 
           const chk = row.querySelector('.chk');
           chk.onclick = ev => { ev.stopPropagation(); setRowSelected(it, row, chk.checked); updateStatus(); };
           if (selected.has(it.path)) { row.classList.add('sel'); chk.checked = true; selected.set(it.path, { item: it, cell: row }); }
 
+          const focusOrOpenChildRoom = async () => {
+            let targetRm = roomMap.get(it.path);
+            if (!targetRm) {
+              const sIdx = entry.subDirs.findIndex(d => d.path === it.path);
+              const pref = preferredRingPos(Math.max(0, sIdx), entry.subDirs.length, depth + 1, entry.x, entry.y, entry.ang, entry, it.path);
+              targetRm = await spawnRoom(it.path, it.name, roomPath, depth + 1, pref);
+              resolveRoomCollisions();
+              syncDoorwayBadges();
+              drawBridges();
+              recordResourceAction(`Opened room (${it.name})`);
+            }
+            if (targetRm) {
+              selectActiveRoom(it.path);
+              camX = -targetRm.x * camZoom;
+              camY = -targetRm.y * camZoom;
+              updateCameraAndLens();
+              persist();
+            }
+          };
+
           if (it.isDir) {
+            const focusBtn = row.querySelector('.rm-focus-child-btn');
+            if (focusBtn) {
+              focusBtn.onclick = async ev => {
+                ev.stopPropagation();
+                await focusOrOpenChildRoom();
+              };
+            }
             const bridgeInd = row.querySelector('.rm-bridge-indicator');
             if (bridgeInd) {
               bridgeInd.onclick = async ev => {
                 ev.stopPropagation();
+                if (ev.shiftKey) {
+                  await focusOrOpenChildRoom();
+                  return;
+                }
                 if (roomMap.has(it.path)) {
                   closeRoomRecursive(it.path);
+                  recordResourceAction(`Closed room (${it.name})`);
                 } else {
                   const sIdx = entry.subDirs.findIndex(d => d.path === it.path);
-                  const pref = preferredRingPos(Math.max(0, sIdx), entry.subDirs.length, depth + 1, entry.x, entry.y, entry.ang);
+                  const pref = preferredRingPos(Math.max(0, sIdx), entry.subDirs.length, depth + 1, entry.x, entry.y, entry.ang, entry, it.path);
                   await spawnRoom(it.path, it.name, roomPath, depth + 1, pref);
                   resolveRoomCollisions();
+                  recordResourceAction(`Opened room (${it.name})`);
                 }
                 syncDoorwayBadges();
                 drawBridges();
@@ -2409,7 +3019,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
           let holdTimer = null, holdStartX = 0, holdStartY = 0;
           row.addEventListener('mousedown', e => {
             if (e.altKey) return; // Allow Alt+Click to pass through for universal global camera pan!
-            if (e.button !== 0 || e.target.tagName === 'INPUT' || (e.target.classList && e.target.classList.contains('rm-bridge-indicator'))) return;
+            if (e.button !== 0 || e.target.tagName === 'INPUT' || (e.target.classList && (e.target.classList.contains('rm-bridge-indicator') || e.target.classList.contains('rm-focus-child-btn')))) return;
             clearTimeout(holdTimer);
             holdStartX = e.clientX; holdStartY = e.clientY;
             const wasSelected = selected.size === 1 && selected.has(it.path) && !e.ctrlKey && !e.shiftKey;
@@ -2425,7 +3035,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
           row.addEventListener('mouseleave', clearHold);
           row.addEventListener('dragstart', clearHold);
 
-          // 1-Click Toggle: Click to Open if closed; Click to Close if open! (FOLDERS ONLY)
+          // 1-Click Toggle: Click to Open if closed; Click to Close if open! (Shift+Click focuses or opens & focuses!)
           row.onclick = async e => {
             if (e.target.tagName === 'INPUT') return; // checkbox toggles selection without navigating
             e.stopPropagation();
@@ -2434,6 +3044,14 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
             const clickedLbl = e.target.classList && e.target.classList.contains('c-name');
             cancelPendingRename();
             clearHold();
+
+            if (it.isDir && e.shiftKey) {
+              setRowSelected(it, row, true);
+              updateStatus();
+              await focusOrOpenChildRoom();
+              return;
+            }
+
             selectClick(it, row, e);
 
             if (it.isDir) {
@@ -2445,10 +3063,11 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
                 updateCameraAndLens();
                 selectActiveRoom(roomPath);
                 persist();
+                recordResourceAction(`Closed room (${it.name})`);
               } else {
-                // 1-Click OPEN: Room is closed, click opens it and flies camera to it!
+                // 1-Click OPEN: Room is closed, click opens it right next to parent folder and flies camera to it!
                 const sIdx = entry.subDirs.findIndex(d => d.path === it.path);
-                const pref = preferredRingPos(Math.max(0, sIdx), entry.subDirs.length, depth + 1, entry.x, entry.y, entry.ang);
+                const pref = preferredRingPos(Math.max(0, sIdx), entry.subDirs.length, depth + 1, entry.x, entry.y, entry.ang, entry, it.path);
                 const targetRm = await spawnRoom(it.path, it.name, roomPath, depth + 1, pref);
                 resolveRoomCollisions();
                 syncDoorwayBadges();
@@ -2458,6 +3077,7 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
                 camY = -targetRm.y * camZoom;
                 updateCameraAndLens();
                 persist();
+                recordResourceAction(`Opened room (${it.name})`);
               }
             } else {
               // Files NEVER open on 1-click in Landscape mode. They select and preview.
@@ -2472,19 +3092,12 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
           };
 
           row.ondblclick = async e => {
-            if (e.target.tagName === 'INPUT' || (e.target.classList && e.target.classList.contains('rm-bridge-indicator'))) return;
+            if (e.target.tagName === 'INPUT' || (e.target.classList && (e.target.classList.contains('rm-bridge-indicator') || e.target.classList.contains('rm-focus-child-btn')))) return;
             e.stopPropagation();
             cancelPendingRename();
             clearHold();
             if (it.isDir) {
-              let targetRm = roomMap.get(it.path);
-              if (targetRm) {
-                selectActiveRoom(it.path);
-                camZoom = 2.05;
-                camX = -targetRm.x * camZoom;
-                camY = -targetRm.y * camZoom;
-                updateCameraAndLens();
-              }
+              await focusOrOpenChildRoom();
             } else {
               if (e.shiftKey) {
                 // Shift + Double Click opens native Windows application
@@ -2496,12 +3109,17 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
             }
           };
 
-          row.addEventListener('auxclick', e => {
+          row.addEventListener('auxclick', async e => {
             if (e.button === 1) {
+              if (_lastMouseDragDist > 5) return;
               e.preventDefault(); e.stopPropagation();
-              if (it.isDir) newTab(it.path, [], e.shiftKey);
-              else if (/\.html?$/i.test(it.name)) newTab(it.path, [], e.shiftKey);
-              else window.api.open(it.path);
+              if (it.isDir) {
+                await focusOrOpenChildRoom();
+              } else if (/\.html?$/i.test(it.name)) {
+                await spawnHtmlIsland(it.path, it.name, roomPath);
+              } else {
+                await spawnFileViewerIsland(it.path, it.name, roomPath);
+              }
             }
           });
 
@@ -2516,8 +3134,10 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
           if (it.isDir) wireDropTarget(row, () => it.path);
 
-          bodyEl.appendChild(row);
+          frag.appendChild(row);
         });
+        bodyEl.appendChild(frag);
+        bodyEl.scrollTop = prevBodyScroll;
       }
     };
     await entry.populate();
@@ -2527,32 +3147,39 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
   function syncDoorwayBadges() {
     for (const r of roomMap.values()) {
-      for (const d of r.el.querySelectorAll('.room-item.is-dir')) {
+      const dirs = r.dirRows || r.el.querySelectorAll('.room-item.is-dir');
+      for (const d of dirs) {
         const subPath = d.dataset.subpath;
         const dIdx = parseInt(d.dataset.dirIndex || '0', 10);
         const isBridged = roomMap.has(subPath);
-        d.classList.toggle('bridged', isBridged);
-        d.title = `${d._item ? d._item.name : 'Folder'} (${isBridged ? 'Room island is open on map · Click to close' : 'Click to open room island on map'})`;
-        const ind = d.querySelector('.rm-bridge-indicator');
-        if (ind) {
-          ind.classList.toggle('bridged', isBridged);
-          ind.textContent = isBridged ? '×' : '🏝️';
-          ind.title = isBridged ? 'Island room is open on map (Click to close)' : 'Click to open island room on map';
-        }
         const childEntry = roomMap.get(subPath);
         const targetChildColor = (childEntry && childEntry.roomColor)
           ? childEntry.roomColor
           : computeRoomAndChildColor(subPath, r, dIdx, r.depth + 1, layout.rooms?.[subPath]);
-        const unopenedBase = landscapePalette === 'default'
-          ? (r.roomColor || defaultFrameColor)
-          : targetChildColor;
-        const lighterUnopened = shiftColorShade(unopenedBase, 'lighter', 1);
-        d.style.setProperty('--folder-ambient-bg', colorToRgba(lighterUnopened, 0.08));
-        d.style.setProperty('--folder-ambient-bd', colorToRgba(lighterUnopened, 0.26));
-        d.style.setProperty('--folder-ambient-hover', colorToRgba(unopenedBase, 0.16));
-        d.style.setProperty('--folder-ambient-bd-hover', colorToRgba(unopenedBase, 0.48));
-
+        const unopenedBase = useCustomUnselectedFolder
+          ? unselectedFolderColor
+          : (landscapePalette === 'default'
+            ? (r.roomColor || defaultFrameColor)
+            : targetChildColor);
         const openedBase = useCustomSelectedFolder ? selectedFolderColor : targetChildColor;
+        const stateKey = `${isBridged}|${landscapePalette}|${useCustomUnselectedFolder}|${unopenedBase}|${useCustomSelectedFolder}|${openedBase}`;
+        if (d._badgeStateKey === stateKey) continue;
+        d._badgeStateKey = stateKey;
+
+        d.classList.toggle('bridged', isBridged);
+        d.title = `${d._item ? d._item.name : 'Folder'} (${isBridged ? 'Room island is open on map · Click to close · Shift+Click to focus' : 'Click to open room island on map · Shift+Click to open & focus'})`;
+        const ind = d.querySelector('.rm-bridge-indicator');
+        if (ind) {
+          ind.classList.toggle('bridged', isBridged);
+          ind.textContent = isBridged ? '×' : '🏝️';
+          ind.title = isBridged ? 'Island room is open on map (Click to close · Shift+Click to focus)' : 'Click to open island room on map';
+        }
+        const lighterUnopened = shiftColorShade(unopenedBase, 'lighter', 1);
+        d.style.setProperty('--folder-ambient-bg', colorToRgba(lighterUnopened, useCustomUnselectedFolder ? 0.28 : 0.08));
+        d.style.setProperty('--folder-ambient-bd', colorToRgba(unopenedBase, useCustomUnselectedFolder ? 0.72 : 0.26));
+        d.style.setProperty('--folder-ambient-hover', colorToRgba(unopenedBase, useCustomUnselectedFolder ? 0.38 : 0.16));
+        d.style.setProperty('--folder-ambient-bd-hover', colorToRgba(unopenedBase, useCustomUnselectedFolder ? 0.9 : 0.48));
+
         const darkerOpened = shiftColorShade(openedBase, 'darker', 1);
         d.style.setProperty('--child-folder-bg', colorToRgba(darkerOpened, 0.34));
         d.style.setProperty('--child-folder-bd', colorToRgba(openedBase, 0.82));
@@ -2966,11 +3593,8 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     } else {
       const preview = await window.api.readPreview(filePath);
       if (preview && typeof preview.text === 'string') {
-        const pre = document.createElement('pre');
-        pre.className = 'file-viewer-text';
-        pre.textContent = preview.text;
         bodyEl.innerHTML = '';
-        bodyEl.appendChild(pre);
+        bodyEl.appendChild(buildLightweightTextEditor(filePath, preview.text, preview.truncated));
       } else {
         bodyEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px">Binary file<br><br><button class="dash-btn" style="padding:4px 10px" onclick="window.api.open('${filePath.replace(/\\/g, '\\\\')}')">Open in Native Windows App</button></div>`;
       }
@@ -3123,25 +3747,41 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
 
   function drawBridges() {
-    bridgeSvg.innerHTML = '';
+    const frag = document.createDocumentFragment();
     for (const b of bridges) {
       const a = roomMap.get(b.fromPath) || htmlMap.get(b.fromPath) || fileViewerMap.get(b.fromPath) || browserMap.get(b.fromPath) || terminalMap.get(b.fromPath);
       const c = roomMap.get(b.toPath) || htmlMap.get(b.toPath) || fileViewerMap.get(b.toPath) || browserMap.get(b.toPath) || terminalMap.get(b.toPath);
       if (!a || !c) continue;
 
-      // Originate bridge directly at the folder row's Y position in parent room a towards child room c
-      let startX = a.x;
-      let startY = a.y;
-      if (a.el) {
-        const folderRow = a.el.querySelector(`.room-item[data-subpath="${b.toPath}"]`);
-        if (folderRow && folderRow.offsetParent) {
-          const rowMidY = folderRow.offsetTop + folderRow.offsetHeight / 2;
-          startY = Math.max(a.y - a.h / 2 + 16, Math.min(a.y + a.h / 2 - 16, (a.y - a.h / 2) + rowMidY));
+      // Anchor bridge directly to the exact (X, Y) position of the folder tile in parent room a
+      let p1 = null;
+      if (a.subRowMap) {
+        const folderRow = a.subRowMap.get(b.toPath);
+        if (folderRow) {
+          if ((typeof folderRow._cachedMidX !== 'number' || typeof folderRow._cachedMidY !== 'number') && folderRow.offsetWidth > 0) {
+            folderRow._cachedMidX = folderRow.offsetLeft + folderRow.offsetWidth / 2;
+            folderRow._cachedMidY = folderRow.offsetTop + folderRow.offsetHeight / 2;
+          }
+          if (typeof folderRow._cachedMidX === 'number' && typeof folderRow._cachedMidY === 'number') {
+            const bodyEl = a.el ? a.el.querySelector('.map-room-body') : null;
+            const scrollTop = bodyEl ? bodyEl.scrollTop : 0;
+            const scale = a.indoorScale || 1;
+            const headH = 29;
+            const tileX = Math.max(a.x - a.w / 2 + 14, Math.min(a.x + a.w / 2 - 14, (a.x - a.w / 2) + folderRow._cachedMidX * scale));
+            const tileY = Math.max(a.y - a.h / 2 + headH, Math.min(a.y + a.h / 2 - 10, (a.y - a.h / 2) + headH + (folderRow._cachedMidY - scrollTop) * scale));
+            const dx = c.x - tileX;
+            const dy = c.y - tileY;
+            if (Math.abs(dx) * a.h >= Math.abs(dy) * a.w) {
+              p1 = { x: dx >= 0 ? a.x + a.w / 2 : a.x - a.w / 2, y: tileY };
+            } else {
+              p1 = { x: tileX, y: dy >= 0 ? a.y + a.h / 2 : a.y - a.h / 2 };
+            }
+          }
         }
       }
-
-      // Calculate perimeter border intersection points so bridge never cuts across room interior!
-      const p1 = getRectBorderIntersection(startX, startY, a.w, a.h, c.x, c.y);
+      if (!p1) {
+        p1 = getRectBorderIntersection(a.x, a.y, a.w, a.h, c.x, c.y);
+      }
       const p2 = getRectBorderIntersection(c.x, c.y, c.w, c.h, p1.x, p1.y);
 
       const casing = document.createElementNS(svgNS, 'line');
@@ -3161,8 +3801,10 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       } else if (c.depth > 1) {
         plank.style.stroke = '#10b981'; // Constructive depth descent
       }
-      bridgeSvg.append(casing, plank);
+      frag.append(casing, plank);
     }
+    bridgeSvg.innerHTML = '';
+    bridgeSvg.appendChild(frag);
   }
 
   // Rain Puddle Field & Random Room Ripple Engine
@@ -3231,20 +3873,32 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     const cr = viewport.getBoundingClientRect();
     const W = cr.width || 850, H = cr.height || 540;
     const cx = W / 2, cy = H / 2;
-    world.style.transform = `translate(${Math.round(cx + camX)}px, ${Math.round(cy + camY)}px) scale(${camZoom})`;
+    world.style.transform = `translate3d(${Math.round(cx + camX)}px, ${Math.round(cy + camY)}px, 0) scale(${camZoom})`;
+    world.classList.toggle('lod-far', camZoom < 0.45 && roomMap.size > 18);
     hud.querySelector('.hud-coords').textContent = `Scale: ${Math.round(camZoom * 100)}% · Rooms: ${roomMap.size}${htmlMap.size ? ' · HTML: ' + htmlMap.size : ''}${fileViewerMap.size ? ' · Files: ' + fileViewerMap.size : ''}`;
 
     const margin = 64;
     innerFrame.style.display = edgeLensOn ? 'block' : 'none';
     marginLayer.innerHTML = '';
-    if (!edgeLensOn) return;
 
     const innerL = margin, innerR = W - margin, innerT = margin, innerB = H - margin;
+    const cullPad = 180;
     const offRight = [], offLeft = [], offTop = [], offBottom = [];
 
     for (const rm of [...roomMap.values(), ...htmlMap.values(), ...fileViewerMap.values(), ...terminalMap.values()]) {
       const sx = cx + camX + rm.x * camZoom;
       const sy = cy + camY + rm.y * camZoom;
+      const halfW = (rm.w * camZoom) / 2;
+      const halfH = (rm.h * camZoom) / 2;
+
+      // Frustum culling: skip layout/paint/animations for rooms completely outside the viewport
+      const isOffscreen = (sx + halfW < -cullPad) || (sx - halfW > W + cullPad) || (sy + halfH < -cullPad) || (sy - halfH > H + cullPad);
+      if (rm._isOffscreen !== isOffscreen) {
+        rm._isOffscreen = isOffscreen;
+        if (rm.el) rm.el.classList.toggle('room-offscreen', isOffscreen);
+      }
+
+      if (!edgeLensOn) continue;
       if (sx >= innerL && sx <= innerR && sy >= innerT && sy <= innerB) continue;
 
       const dx = sx < innerL ? innerL - sx : (sx > innerR ? sx - innerR : 0);
@@ -3255,6 +3909,11 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
       else if (sx < innerL && dx >= dy) offLeft.push(item);
       else if (sy < innerT) offTop.push(item);
       else offBottom.push(item);
+    }
+
+    if (!edgeLensOn) {
+      drawRadar();
+      return;
     }
 
     const renderEdgeQueue = (arr, side) => {
@@ -3568,11 +4227,11 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
   // 2. Alt + Scroll: Resizes room file icons for the room under cursor!
   // 3. Normal Scroll: Scrolls room body, file viewers, and web browsers naturally without intercepting!
   viewport.addEventListener('wheel', e => {
-    // When Magnifier Loupe is active, scrolling adjusts Loupe magnification factor (1.4x .. 4.5x)!
+    // When Magnifier Loupe is active, scrolling adjusts Loupe magnification factor (1.4x .. 8.0x)!
     if (loupeActive) {
       e.preventDefault(); e.stopPropagation();
-      loupeMag = Math.max(1.4, Math.min(4.5, +(loupeMag + (e.deltaY < 0 ? 0.25 : -0.25)).toFixed(2)));
-      updateLoupePosition();
+      loupeMag = Math.max(1.4, Math.min(8.0, +(loupeMag + (e.deltaY < 0 ? 0.35 : -0.35)).toFixed(2)));
+      updateLoupePosition(false);
       return;
     }
 
@@ -3861,22 +4520,24 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
 
   if (subDirsToSpawn.length > 0) {
     await Promise.all(subDirsToSpawn.map((sd, i) => {
-      const pref = preferredRingPos(i, subDirsToSpawn.length, 1, 0, 0, 0);
+      const pref = preferredRingPos(i, subDirsToSpawn.length, 1, 0, 0, 0, rootEntry, sd.path);
       return spawnRoom(sd.path, sd.name, dir, 1, pref);
     }));
   }
 
-  // Restore any saved rooms outside root subDirs, sorted topologically by path depth so parent rooms ALWAYS spawn before child rooms!
+  // Restore any saved rooms outside root subDirs, sorted topologically by path depth and spawned in parallel batches!
   const sortedSavedPaths = [...savedPaths].sort((a, b) => a.split(/[\\/]/).length - b.split(/[\\/]/).length);
-  for (const sp of sortedSavedPaths) {
-    if (!roomMap.has(sp)) {
+  const RESTORE_BATCH = 16;
+  for (let bStart = 0; bStart < sortedSavedPaths.length; bStart += RESTORE_BATCH) {
+    const chunk = sortedSavedPaths.slice(bStart, bStart + RESTORE_BATCH).filter(sp => !roomMap.has(sp));
+    await Promise.all(chunk.map(sp => {
       const savedInfo = layout.rooms[sp];
       const name = baseName(sp);
       const parPath = savedInfo?.parentPath || (roomMap.has(parent(sp)) ? parent(sp) : null);
       const parRm = parPath ? roomMap.get(parPath) : null;
       const trueDepth = parRm ? (parRm.depth + 1) : 1;
-      await spawnRoom(sp, name, parPath, trueDepth, { x: savedInfo?.x || 500, y: savedInfo?.y || 0 });
-    }
+      return spawnRoom(sp, name, parPath, trueDepth, { x: savedInfo?.x || 500, y: savedInfo?.y || 0 });
+    }));
   }
 
   // Restore saved HTML viewer islands
@@ -3912,6 +4573,154 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     }
   }
 
+  // Ctrl+F Landscape Jump-To Navigator Logic
+  const jumpInput = jumpModal.querySelector('.landscape-jump-input');
+  const jumpList = jumpModal.querySelector('.landscape-jump-list');
+  let jumpMatches = [];
+  let jumpActiveIdx = 0;
+
+  async function executeJumpTarget(m) {
+    if (!m) return;
+    jumpModal.classList.remove('open');
+    if (m.kind === 'room') {
+      const r = roomMap.get(m.path);
+      if (r) {
+        selectActiveRoom(r.path);
+        camX = -r.x * camZoom;
+        camY = -r.y * camZoom;
+        updateCameraAndLens();
+      }
+      return;
+    }
+    if (m.kind === 'folder') {
+      let targetRm = roomMap.get(m.path);
+      if (!targetRm && m.parentRoom) {
+        const sIdx = m.parentRoom.subDirs.findIndex(d => d.path === m.path);
+        const pref = preferredRingPos(Math.max(0, sIdx), m.parentRoom.subDirs.length, m.parentRoom.depth + 1, m.parentRoom.x, m.parentRoom.y, m.parentRoom.ang, m.parentRoom, m.path);
+        targetRm = await spawnRoom(m.path, m.name, m.parentRoom.path, m.parentRoom.depth + 1, pref);
+        resolveRoomCollisions();
+        syncDoorwayBadges();
+        drawBridges();
+        recordResourceAction(`Jumped & opened room (${m.name})`);
+      }
+      if (targetRm) {
+        selectActiveRoom(targetRm.path);
+        camX = -targetRm.x * camZoom;
+        camY = -targetRm.y * camZoom;
+        updateCameraAndLens();
+        persist();
+      }
+      return;
+    }
+    if (m.kind === 'file' && m.parentRoom) {
+      const r = m.parentRoom;
+      selectActiveRoom(r.path);
+      camX = -r.x * camZoom;
+      camY = -r.y * camZoom;
+      updateCameraAndLens();
+      const rows = r.el.querySelectorAll('.room-item');
+      for (const row of rows) {
+        if (row._item && row._item.path === m.path) {
+          clearSelection();
+          setRowSelected(row._item, row, true);
+          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          row.classList.remove('jump-flash-highlight');
+          void row.offsetWidth;
+          row.classList.add('jump-flash-highlight');
+          updateStatus();
+          break;
+        }
+      }
+    }
+  }
+
+  function renderJumpList(queryText) {
+    const q = (queryText || '').trim().toLowerCase();
+    const results = [];
+    const seenFolders = new Set();
+
+    for (const r of roomMap.values()) {
+      if (!q || r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q)) {
+        results.push({ kind: 'room', name: r.name, path: r.path, sub: `Open Room (Depth ${r.depth})`, badge: '🏝️ Room', score: r.name.toLowerCase().startsWith(q) ? 0 : 1 });
+        seenFolders.add(r.path);
+      }
+    }
+    for (const r of roomMap.values()) {
+      for (const sd of (r.subDirs || [])) {
+        if (seenFolders.has(sd.path)) continue;
+        if (!q || sd.name.toLowerCase().includes(q)) {
+          results.push({ kind: 'folder', name: sd.name, path: sd.path, parentRoom: r, sub: `in ${r.name}`, badge: '📁 Folder', score: sd.name.toLowerCase().startsWith(q) ? 2 : 3 });
+          seenFolders.add(sd.path);
+        }
+      }
+      for (const f of (r.files || [])) {
+        if (!q || f.name.toLowerCase().includes(q)) {
+          results.push({ kind: 'file', name: f.name, path: f.path, parentRoom: r, sub: `in ${r.name} · ${fmtSize(f.size)}`, badge: '📄 File', score: f.name.toLowerCase().startsWith(q) ? 4 : 5 });
+        }
+      }
+    }
+    results.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
+    jumpMatches = results.slice(0, 80);
+    jumpActiveIdx = 0;
+    jumpList.innerHTML = '';
+    if (!jumpMatches.length) {
+      jumpList.innerHTML = `<div style="padding:10px;color:var(--muted);font-size:11px;text-align:center">No matching rooms, folders, or files in landscape.</div>`;
+      return;
+    }
+    jumpMatches.forEach((m, idx) => {
+      const el = document.createElement('div');
+      el.className = 'landscape-jump-item' + (idx === jumpActiveIdx ? ' active' : '');
+      el.innerHTML = `<span class="lj-badge">${m.badge}</span><span class="lj-main"></span><span class="lj-sub"></span>`;
+      el.querySelector('.lj-main').textContent = m.name;
+      el.querySelector('.lj-sub').textContent = m.sub;
+      el.title = m.path;
+      el.onclick = e => { e.stopPropagation(); executeJumpTarget(m); };
+      jumpList.appendChild(el);
+    });
+  }
+
+  function syncJumpActiveItem() {
+    const items = jumpList.querySelectorAll('.landscape-jump-item');
+    items.forEach((el, i) => {
+      el.classList.toggle('active', i === jumpActiveIdx);
+      if (i === jumpActiveIdx) el.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  jumpInput.addEventListener('input', () => renderJumpList(jumpInput.value));
+  jumpInput.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      jumpModal.classList.remove('open');
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (jumpMatches.length) { jumpActiveIdx = (jumpActiveIdx + 1) % jumpMatches.length; syncJumpActiveItem(); }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (jumpMatches.length) { jumpActiveIdx = (jumpActiveIdx - 1 + jumpMatches.length) % jumpMatches.length; syncJumpActiveItem(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (jumpMatches[jumpActiveIdx]) executeJumpTarget(jumpMatches[jumpActiveIdx]);
+    }
+  });
+  jumpModal.querySelector('.lj-close').onclick = e => {
+    e.stopPropagation();
+    jumpModal.classList.remove('open');
+  };
+
+  window._openLandscapeJumpModal = (initialText = '', focusInput = true) => {
+    jumpModal.classList.add('open');
+    if (typeof initialText === 'string' && initialText !== jumpInput.value) {
+      jumpInput.value = initialText;
+    }
+    renderJumpList(jumpInput.value);
+    if (focusInput) {
+      jumpInput.focus();
+      jumpInput.select();
+    }
+  };
+
   window.__spawnFolderIsland = spawnFolderIsland;
   window.__spawnHtmlIsland = spawnHtmlIsland;
   window.__spawnFileViewerIsland = spawnFileViewerIsland;
@@ -3923,7 +4732,8 @@ async function renderLandscape(dir, container, onNavigate = go, startZoomedIn = 
     dir,
     getActiveRoomPath: () => activeRoomPath,
     syncDoorwayBadges,
-    drawBridges
+    drawBridges,
+    openJumpModal: window._openLandscapeJumpModal
   };
 
   // 3. Run iterative AABB separation solver so zero rooms overlap even if saved positions collided!
@@ -3991,7 +4801,8 @@ function renderHtmlTab(filePath, container) {
 }
 
 async function show() {
-  $('address').value = cur;
+  console.log(`%c[PEEK-SHOW] show() called | cur="${cur}" | mode="${mode}"`, 'background: #10b981; color: #fff; font-weight: bold; padding: 2px 4px');
+  if ($('address')) $('address').value = cur;
   stopAddressEdit();
   renderCrumbs();
   updateAddrIcon();
@@ -4002,13 +4813,15 @@ async function show() {
   list.onmousemove = null;
   list.onmouseleave = null;
   if (cur === HOME_URI || cur.startsWith('peek://browser') || cur.startsWith('peek://gluon')) {
+    console.log('[PEEK-SHOW] Branch: HOME_URI -> hiding header and rendering Home Dashboard');
     if (cur.startsWith('peek://browser') || cur.startsWith('peek://gluon')) cur = HOME_URI;
     list.className = '';
-    $('header').style.display = 'none';
+    if ($('header')) $('header').style.display = 'none';
     renderHomeDashboard(list);
     totalCount = 0;
     updateStatus();
     document.title = 'Home - Peek Explorer';
+    console.log('[PEEK-SHOW] Finished Home Dashboard setup');
     return;
   }
   if (/\.html?$/i.test(cur)) {
@@ -4029,7 +4842,9 @@ async function show() {
   }
   list.className = 'v-' + mode;
   $('header').style.display = mode === 'details' ? 'flex' : 'none';
+  list.classList.remove('dense-grid');
   totalCount = await renderDir(cur, 0, list);
+  refreshDense();
   list.scrollTop = prevScroll;
   const vis = new Set(visibleRows().map(r => r._item.path));
   for (const p of [...selected.keys()]) if (!vis.has(p)) selected.delete(p);
@@ -4167,7 +4982,13 @@ function defaultNewTabPath() {
   return HOME_URI;
 }
 function renderTabs() {
-  const bar = $('tabs'); bar.innerHTML = '';
+  const bar = $('tabs');
+  console.log(`[PEEK-TAB] renderTabs() executing. bar element exists? ${!!bar}, count=${tabs.length}`);
+  if (!bar) {
+    console.error('[PEEK-TAB] ERROR: #tabs DOM element not found!');
+    return;
+  }
+  bar.innerHTML = '';
   tabs.forEach((t, i) => {
     const el = document.createElement('div');
     el.className = 'tab' + (i === active ? ' active' : '') + (t.pinned ? ' pinned' : '');
@@ -4258,7 +5079,7 @@ function renderTabs() {
           $('status').textContent = `✓ Moved ${r.moved.length} item${r.moved.length > 1 ? 's' : ''} → Tab "${baseName(p)}"`;
         }
         if (r.skipped && r.skipped.length) alert('Skipped:\n' + r.skipped.join('\n'));
-        show();
+        await refreshKeep([p, ...srcs.map(s => parent(s))]);
       }
     });
     bar.appendChild(el);
@@ -4277,7 +5098,8 @@ $('tabs').addEventListener('dblclick', e => {
 });
 
 function loadTab(i) {
-  active = i; const t = tabs[i];
+  console.log(`%c[PEEK-TAB] loadTab(index=${i}) called`, 'color: #f59e0b; font-weight: bold', { requestedTab: tabs[i], allTabs: tabs });
+  active = i; const t = tabs[i] || {};
   cur = t.cur || HOME_URI; hist = t.hist && t.hist.length ? t.hist : [cur]; hi = typeof t.hi === 'number' ? t.hi : hist.length - 1;
   expanded = new Set(t.expanded || []);
   const effMode = t.mode || folderViews[cur] || defaultView || 'details';
@@ -4286,7 +5108,10 @@ function loadTab(i) {
     if ($('view')) $('view').value = mode;
   }
   clearSelection(); anchorPath = null; focusedPath = null;
-  show(); renderTabs();
+  console.log(`[PEEK-TAB] loadTab(${i}): cur resolved to "${cur}", effMode="${effMode}". Calling show() & renderTabs()...`);
+  show();
+  renderTabs();
+  console.log(`[PEEK-TAB] loadTab(${i}) complete`);
 }
 function switchTab(i) { if (i === active || !tabs[i]) return; saveTab(); loadTab(i); persist(); }
 function newTab(p = null, initExpanded = [], switchTo = true) {
@@ -4319,7 +5144,7 @@ function persist() {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     saveTab();
-    const s = { view: mode, folderViews, landscapePalette, modePaletteIndex, customPaletteColors, inheritShiftMode, landscapeBg, landscapeBgColor, landscapeBgImage, canvasReactMode, accentColor, hotkeys, defaultFrameColor, defaultBgColor, roomBgOpacity, roomGlowIntensity, roomGlowRange, breathTargetColor, breathTargetBgColor, breathScaleSize, breathAffectTiles, puddleIntervalMin, puddleIntervalMax, puddleRippleDuration, puddleMaxConcurrent, activeRoomBorderColor, selectedFolderColor, useCustomSelectedFolder, browserAutoSleep, autoSummarize, breathingDuration, lockFrame, lockBg, holdRenameEnabled, holdRenameDelay, sortKey, sortAsc, groupKey, colWidths, showPreview, darkMode, showHidden, showExt, showChecks, newTabTarget, scripts, bookmarks, recentFolders, landscapeLayout, splitRatio };
+    const s = { view: mode, folderViews, landscapePalette, modePaletteIndex, customPaletteColors, inheritShiftMode, landscapeBg, landscapeBgColor, landscapeBgImage, canvasReactMode, accentColor, hotkeys, defaultFrameColor, defaultBgColor, roomBgOpacity, roomGlowIntensity, roomGlowRange, breathTargetColor, breathTargetBgColor, breathScaleSize, breathAffectTiles, puddleIntervalMin, puddleIntervalMax, puddleRippleDuration, puddleMaxConcurrent, activeRoomBorderColor, selectedFolderColor, useCustomSelectedFolder, unselectedFolderColor, useCustomUnselectedFolder, browserAutoSleep, autoSummarize, breathingDuration, lockFrame, lockBg, holdRenameEnabled, holdRenameDelay, sortKey, sortAsc, groupKey, colWidths, showPreview, darkMode, showHidden, showExt, showChecks, newTabTarget, scripts, bookmarks, recentFolders, landscapeLayout, splitRatio, kidsLayouts, kidsRoomSize, kidsDense, denseTop };
     if (isPrimary) s.session = { tabs, active };
     window.api.saveSettings(s);
   }, 300);
@@ -4328,18 +5153,20 @@ function persist() {
 // ---- Back / Forward / Up / Home + Middle-Click for New Tab + Mouse Back/Forward buttons + History menu ----
 function goBack() { if (hi > 0) { hi--; go(hist[hi], false); } }
 function goForward() { if (hi < hist.length - 1) { hi++; go(hist[hi], false); } }
-$('back').onclick = goBack;
-$('fwd').onclick = goForward;
-$('up').onclick = () => go(parent(cur));
-wireDropTarget($('up'), () => parent(cur));
-$('homeBtn').onclick = () => go(HOME_URI);
-$('refresh').onclick = show;
+if ($('back')) $('back').onclick = goBack;
+if ($('fwd')) $('fwd').onclick = goForward;
+if ($('up')) {
+  $('up').onclick = () => go(parent(cur));
+  wireDropTarget($('up'), () => parent(cur));
+}
+if ($('homeBtn')) $('homeBtn').onclick = () => go(HOME_URI);
+if ($('refresh')) $('refresh').onclick = show;
 
 // Middle-click on Back / Forward / Up / Home opens that destination in a new tab!
-$('back').addEventListener('auxclick', e => { if (e.button === 1 && hi > 0) newTab(hist[hi - 1], [], false); });
-$('fwd').addEventListener('auxclick', e => { if (e.button === 1 && hi < hist.length - 1) newTab(hist[hi + 1], [], false); });
-$('up').addEventListener('auxclick', e => { if (e.button === 1 && cur !== HOME_URI) newTab(parent(cur), [], false); });
-$('homeBtn').addEventListener('auxclick', e => { if (e.button === 1) newTab(HOME_URI, [], true); });
+$('back')?.addEventListener('auxclick', e => { if (e.button === 1 && hi > 0) newTab(hist[hi - 1], [], false); });
+$('fwd')?.addEventListener('auxclick', e => { if (e.button === 1 && hi < hist.length - 1) newTab(hist[hi + 1], [], false); });
+$('up')?.addEventListener('auxclick', e => { if (e.button === 1 && cur !== HOME_URI) newTab(parent(cur), [], false); });
+$('homeBtn')?.addEventListener('auxclick', e => { if (e.button === 1) newTab(HOME_URI, [], true); });
 
 function showHistoryMenu(e) {
   e.preventDefault(); e.stopPropagation();
@@ -4350,8 +5177,8 @@ function showHistoryMenu(e) {
   })));
   placeMenu(r.left, r.bottom + 2);
 }
-$('back').addEventListener('contextmenu', showHistoryMenu);
-$('fwd').addEventListener('contextmenu', showHistoryMenu);
+$('back')?.addEventListener('contextmenu', showHistoryMenu);
+$('fwd')?.addEventListener('contextmenu', showHistoryMenu);
 
 // Hardware Mouse Back (button 3) & Mouse Forward (button 4)
 window.addEventListener('mouseup', e => {
@@ -4359,39 +5186,63 @@ window.addEventListener('mouseup', e => {
   else if (e.button === 4) { e.preventDefault(); goForward(); }
 });
 
-$('address').addEventListener('keydown', e => {
+$('address')?.addEventListener('keydown', e => {
   if (e.key === 'Enter') { stopAddressEdit(); go($('address').value.trim() || HOME_URI); }
   else if (e.key === 'Escape') { stopAddressEdit(); }
 });
-$('address').addEventListener('blur', e => {
+$('address')?.addEventListener('blur', e => {
   if (e.relatedTarget && (e.relatedTarget.id === 'addrHistBtn' || e.relatedTarget.id === 'addrIcon')) return;
   stopAddressEdit();
 });
-$('address').addEventListener('mouseup', e => {
+$('address')?.addEventListener('mouseup', e => {
   if (justStartedAddrEdit) {
     e.preventDefault();
     $('address').select();
   }
 });
-$('search').addEventListener('input', e => { filterText = e.target.value; applyFilter(); });
-$('search').addEventListener('keydown', e => { if (e.key === 'Escape') { $('search').value = ''; filterText = ''; applyFilter(); $('search').blur(); } });
-$('view').onchange = e => { mode = e.target.value; folderViews[cur] = mode; if (tabs[active]) tabs[active].mode = mode; show(); persist(); };
-$('splitBtn').onclick = e => {
-  e.stopPropagation();
-  const r = $('splitBtn').getBoundingClientRect();
-  showSplitMenu(r.left, r.bottom + 2, cur);
-};
-$('spBack').onclick = () => { if (splitState.hi > 0) { splitState.hi--; splitGo(splitState.hist[splitState.hi], false); } };
-$('spBack').addEventListener('auxclick', e => { if (e.button === 1 && splitState.hi > 0) { e.preventDefault(); newTab(splitState.hist[splitState.hi - 1], [], false); } });
-$('spUp').onclick = () => splitGo(parent(splitState.cur), true);
-$('spUp').addEventListener('auxclick', e => { if (e.button === 1 && splitState.cur !== HOME_URI) { e.preventDefault(); newTab(parent(splitState.cur), [], false); } });
-$('spHome').onclick = () => splitGo(HOME_URI, true);
-$('spHome').addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); newTab(HOME_URI, [], true); } });
-$('spAddr').addEventListener('keydown', e => { if (e.key === 'Enter') splitGo($('spAddr').value.trim() || HOME_URI, true); });
-$('spView').onchange = e => { splitState.mode = e.target.value; renderSplitPane(); };
-$('spSwap').onclick = () => { const tmp = cur; go(splitState.cur); splitGo(tmp); };
-$('spSwap').addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); newTab(splitState.cur, [], false); } });
-$('spClose').onclick = closeSplit;
+$('search')?.addEventListener('focus', () => {
+  if ((mode === 'landscape' || mode === 'lens') && typeof window._openLandscapeJumpModal === 'function') {
+    window._openLandscapeJumpModal($('search').value, true);
+  }
+});
+$('search')?.addEventListener('input', e => {
+  filterText = e.target.value;
+  if ((mode === 'landscape' || mode === 'lens') && typeof window._openLandscapeJumpModal === 'function') {
+    window._openLandscapeJumpModal(filterText, false);
+  } else {
+    applyFilter();
+  }
+});
+$('search')?.addEventListener('keydown', e => { if (e.key === 'Escape') { $('search').value = ''; filterText = ''; applyFilter(); $('search').blur(); } });
+if ($('view')) {
+  $('view').onchange = e => { mode = e.target.value; folderViews[cur] = mode; if (tabs[active]) tabs[active].mode = mode; show(); persist(); recordResourceAction(`Switched view to ${mode}`); };
+}
+if ($('splitBtn')) {
+  $('splitBtn').onclick = e => {
+    e.stopPropagation();
+    const r = $('splitBtn').getBoundingClientRect();
+    showSplitMenu(r.left, r.bottom + 2, cur);
+  };
+}
+if ($('spBack')) {
+  $('spBack').onclick = () => { if (splitState.hi > 0) { splitState.hi--; splitGo(splitState.hist[splitState.hi], false); } };
+  $('spBack').addEventListener('auxclick', e => { if (e.button === 1 && splitState.hi > 0) { e.preventDefault(); newTab(splitState.hist[splitState.hi - 1], [], false); } });
+}
+if ($('spUp')) {
+  $('spUp').onclick = () => splitGo(parent(splitState.cur), true);
+  $('spUp').addEventListener('auxclick', e => { if (e.button === 1 && splitState.cur !== HOME_URI) { e.preventDefault(); newTab(parent(splitState.cur), [], false); } });
+}
+if ($('spHome')) {
+  $('spHome').onclick = () => splitGo(HOME_URI, true);
+  $('spHome').addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); newTab(HOME_URI, [], true); } });
+}
+$('spAddr')?.addEventListener('keydown', e => { if (e.key === 'Enter') splitGo($('spAddr').value.trim() || HOME_URI, true); });
+if ($('spView')) $('spView').onchange = e => { splitState.mode = e.target.value; renderSplitPane(); };
+if ($('spSwap')) {
+  $('spSwap').onclick = () => { const tmp = cur; go(splitState.cur); splitGo(tmp); };
+  $('spSwap').addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); newTab(splitState.cur, [], false); } });
+}
+if ($('spClose')) $('spClose').onclick = closeSplit;
 const splitGrip = $('splitGrip');
 if (splitGrip) {
   splitGrip.addEventListener('mousedown', e => {
@@ -4422,23 +5273,32 @@ if (splitGrip) {
     window.addEventListener('mouseup', onUp);
   });
 }
-$('group').onchange = e => { groupKey = e.target.value; show(); persist(); };
-$('sort').onchange = e => { sortKey = e.target.value; show(); persist(); };
-$('sortDir').onclick = () => { sortAsc = !sortAsc; $('sortDir').textContent = sortAsc ? '↑' : '↓'; show(); persist(); };
-$('checkBtn').onclick = () => { showChecks = !showChecks; applyToggles(); persist(); };
-$('extBtn').onclick = () => { showExt = !showExt; applyToggles(); show(); persist(); };
-$('hiddenBtn').onclick = () => { showHidden = !showHidden; applyToggles(); applyFilter(); persist(); };
-$('previewBtn').onclick = () => { showPreview = !showPreview; applyPreviewPane(); persist(); };
-$('themeBtn').onclick = () => { darkMode = !darkMode; applyTheme(); persist(); };
+if ($('group')) $('group').onchange = e => { groupKey = e.target.value; show(); persist(); };
+if ($('sort')) $('sort').onchange = e => { sortKey = e.target.value; show(); persist(); };
+if ($('sortDir')) $('sortDir').onclick = () => { sortAsc = !sortAsc; $('sortDir').textContent = sortAsc ? '↑' : '↓'; show(); persist(); };
+if ($('checkBtn')) $('checkBtn').onclick = () => { showChecks = !showChecks; applyToggles(); persist(); };
+if ($('extBtn')) $('extBtn').onclick = () => { showExt = !showExt; applyToggles(); show(); persist(); };
+if ($('hiddenBtn')) $('hiddenBtn').onclick = () => { showHidden = !showHidden; applyToggles(); applyFilter(); persist(); };
+if ($('previewBtn')) $('previewBtn').onclick = () => { showPreview = !showPreview; applyPreviewPane(); persist(); };
+if ($('themeBtn')) $('themeBtn').onclick = () => { darkMode = !darkMode; applyTheme(); persist(); };
+if ($('denseBtn')) {
+  $('denseBtn').classList.toggle('active', denseTop);
+  $('denseBtn').onclick = () => { denseTop = !denseTop; $('denseBtn').classList.toggle('active', denseTop); show(); persist(); };
+}
 const devToolsBtn = $('devToolsBtn');
 if (devToolsBtn) devToolsBtn.onclick = () => window.api.openDevTools();
 
 [['c-name', 'name'], ['c-date', 'mtime'], ['c-type', 'type'], ['c-size', 'size']].forEach(([c, k]) => {
-  $('header').querySelector('.' + c).onclick = e => {
-    if (e.target.classList.contains('col-resizer')) return;
-    if (sortKey === k) sortAsc = !sortAsc; else { sortKey = k; sortAsc = true; }
-    $('sort').value = k; $('sortDir').textContent = sortAsc ? '↑' : '↓'; show(); persist();
-  };
+  const colEl = $('header')?.querySelector('.' + c);
+  if (colEl) {
+    colEl.onclick = e => {
+      if (e.target.classList.contains('col-resizer')) return;
+      if (sortKey === k) sortAsc = !sortAsc; else { sortKey = k; sortAsc = true; }
+      if ($('sort')) $('sort').value = k;
+      if ($('sortDir')) $('sortDir').textContent = sortAsc ? '↑' : '↓';
+      show(); persist();
+    };
+  }
 });
 // Column drag-resizers
 document.querySelectorAll('.col-resizer').forEach(handle => {
@@ -4497,116 +5357,203 @@ function renderBookmarksNav() {
 }
 
 (async () => {
-  const settings = await window.api.getSettings();
-  if (settings.folderViews && typeof settings.folderViews === 'object') { folderViews = { ...settings.folderViews }; }
-  if (settings.landscapePalette) landscapePalette = settings.landscapePalette;
-  if (settings.modePaletteIndex && typeof settings.modePaletteIndex === 'object' && !Array.isArray(settings.modePaletteIndex)) {
-    modePaletteIndex = { ...modePaletteIndex, ...settings.modePaletteIndex };
+  if (window.api && window.api.writeTextFile) {
+    window.api.writeTextFile('e:/Vector Field Theory/peek_explorer/_bootstrap_started.txt', 'BOOTSTRAP STARTED AT ' + new Date().toISOString());
   }
-  if (settings.customPaletteColors && typeof settings.customPaletteColors === 'object' && !Array.isArray(settings.customPaletteColors)) {
-    customPaletteColors = { ...customPaletteColors, ...settings.customPaletteColors };
-  }
-  if (settings.inheritShiftMode) inheritShiftMode = settings.inheritShiftMode;
-  if (settings.landscapeBg) landscapeBg = settings.landscapeBg;
-  if (settings.landscapeBgColor) landscapeBgColor = settings.landscapeBgColor;
-  if (settings.landscapeBgImage) landscapeBgImage = settings.landscapeBgImage;
-  if (typeof settings.canvasReactMode === 'boolean') canvasReactMode = settings.canvasReactMode;
-  if (settings.accentColor) {
-    accentColor = settings.accentColor;
-    document.documentElement.style.setProperty('--accent', accentColor);
-  }
-  if (settings.hotkeys && typeof settings.hotkeys === 'object') {
-    hotkeys = { ...DEFAULT_HOTKEYS, ...settings.hotkeys };
-  }
-  if (settings.defaultFrameColor) defaultFrameColor = settings.defaultFrameColor;
-  if (settings.defaultBgColor) defaultBgColor = settings.defaultBgColor;
-  if (typeof settings.roomBgOpacity === 'number') roomBgOpacity = settings.roomBgOpacity;
-  if (typeof settings.roomGlowIntensity === 'number') {
-    roomGlowIntensity = settings.roomGlowIntensity;
-    document.documentElement.style.setProperty('--room-glow-intensity', roomGlowIntensity / 100);
-  }
-  if (typeof settings.roomGlowRange === 'number') {
-    roomGlowRange = settings.roomGlowRange;
-    document.documentElement.style.setProperty('--room-glow-range', `${roomGlowRange}px`);
-  }
-  if (settings.breathTargetColor) breathTargetColor = settings.breathTargetColor;
-  if (settings.breathTargetBgColor) breathTargetBgColor = settings.breathTargetBgColor;
-  if (typeof settings.breathScaleSize === 'number') breathScaleSize = settings.breathScaleSize;
-  if (typeof settings.breathAffectTiles === 'boolean') breathAffectTiles = settings.breathAffectTiles;
-  if (typeof settings.puddleIntervalMin === 'number') puddleIntervalMin = settings.puddleIntervalMin;
-  if (typeof settings.puddleIntervalMax === 'number') puddleIntervalMax = settings.puddleIntervalMax;
-  if (typeof settings.puddleRippleDuration === 'number') puddleRippleDuration = settings.puddleRippleDuration;
-  if (typeof settings.puddleMaxConcurrent === 'number') puddleMaxConcurrent = settings.puddleMaxConcurrent;
-  if (settings.activeRoomBorderColor) activeRoomBorderColor = settings.activeRoomBorderColor;
-  if (settings.selectedFolderColor) selectedFolderColor = settings.selectedFolderColor;
-  if (typeof settings.useCustomSelectedFolder === 'boolean') useCustomSelectedFolder = settings.useCustomSelectedFolder;
-  if (typeof settings.browserAutoSleep === 'boolean') browserAutoSleep = settings.browserAutoSleep;
-  if (typeof settings.autoSummarize === 'boolean') autoSummarize = settings.autoSummarize;
-  if (typeof settings.breathingDuration === 'number') breathingDuration = settings.breathingDuration;
-  if (typeof settings.lockFrame === 'boolean') lockFrame = settings.lockFrame;
-  if (typeof settings.lockBg === 'boolean') lockBg = settings.lockBg;
-  if (typeof settings.holdRenameEnabled === 'boolean') holdRenameEnabled = settings.holdRenameEnabled;
-  if (typeof settings.holdRenameDelay === 'number') holdRenameDelay = settings.holdRenameDelay;
-  if (settings.view && PX[settings.view]) { defaultView = settings.view; mode = settings.view; $('view').value = mode; }
-  if (settings.groupKey) { groupKey = settings.groupKey; $('group').value = groupKey; }
-  if (settings.sortKey) { sortKey = settings.sortKey; $('sort').value = sortKey; }
-  if (typeof settings.sortAsc === 'boolean') { sortAsc = settings.sortAsc; $('sortDir').textContent = sortAsc ? '↑' : '↓'; }
-  if (settings.colWidths) { colWidths = { ...colWidths, ...settings.colWidths }; applyColWidths(); }
-  if (typeof settings.showPreview === 'boolean') { showPreview = settings.showPreview; applyPreviewPane(); }
-  if (typeof settings.darkMode === 'boolean') { darkMode = settings.darkMode; applyTheme(); }
-  if (typeof settings.showHidden === 'boolean') showHidden = settings.showHidden;
-  if (typeof settings.showExt === 'boolean') showExt = settings.showExt;
-  if (typeof settings.showChecks === 'boolean') showChecks = settings.showChecks;
-  applyToggles();
-  if (settings.newTabTarget) newTabTarget = settings.newTabTarget;
-  if (Array.isArray(settings.scripts)) scripts = settings.scripts;
-  if (Array.isArray(settings.bookmarks)) bookmarks = settings.bookmarks;
-  if (Array.isArray(settings.recentFolders)) recentFolders = settings.recentFolders;
-  if (settings.landscapeLayout && typeof settings.landscapeLayout === 'object') landscapeLayout = settings.landscapeLayout;
-  if (settings.splitRatio) { splitRatio = settings.splitRatio; applySplitRatio(); }
+  console.log('%c[PEEK-BOOT:3] === Starting Async Bootstrap Sequence ===', 'background: #6366f1; color: #fff; font-size: 13px; font-weight: bold; padding: 2px 6px; border-radius: 3px');
+  console.log('[PEEK-BOOT:3] DOM status:', {
+    readyState: document.readyState,
+    body: !!document.body,
+    list: !!$('list'),
+    tabs: !!$('tabs'),
+    nav: !!$('nav'),
+    status: !!$('status')
+  });
 
-  cachedPlaces = await window.api.places();
-  await syncClip();
-  const nav = $('nav');
-  const homeItem = document.createElement('div'); homeItem.className = 'n';
-  homeItem.innerHTML = `<span style="font-size:15px">🏠</span><span>Home Dashboard</span>`;
-  homeItem.onclick = () => go(HOME_URI);
-  homeItem.addEventListener('auxclick', e => { if (e.button === 1) newTab(HOME_URI, [], e.shiftKey); });
-  nav.appendChild(homeItem);
+  let settings = {};
+  try {
+    console.log('[PEEK-BOOT:3] Step 1: Checking window.api.getSettings availability...');
+    if (window.api && typeof window.api.getSettings === 'function') {
+      console.log('[PEEK-BOOT:3] Step 1: Requesting settings with 1500ms timeout race...');
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Settings IPC timeout (1500ms expired)')), 1500));
+      settings = (await Promise.race([window.api.getSettings(), timeout])) || {};
+      console.log('[PEEK-BOOT:3] Step 1: Settings successfully retrieved:', settings);
+    } else {
+      console.warn('[PEEK-BOOT:3] Step 1: window.api.getSettings is not a function; using defaults');
+    }
+  } catch (err) {
+    console.warn('[PEEK-BOOT:3] Step 1: Failed or timed out loading settings, using defaults:', err.message || err);
+  }
 
-  bmHost = document.createElement('div'); nav.appendChild(bmHost);
-  renderBookmarksNav();
+  try {
+    console.log('[PEEK-BOOT:3] Step 2: Unpacking settings into runtime configuration...');
+    // 1. Safe Settings Unpack
+    if (settings.folderViews && typeof settings.folderViews === 'object') folderViews = { ...settings.folderViews };
+    if (settings.landscapePalette) landscapePalette = settings.landscapePalette;
+    if (settings.modePaletteIndex && typeof settings.modePaletteIndex === 'object' && !Array.isArray(settings.modePaletteIndex)) {
+      modePaletteIndex = { ...modePaletteIndex, ...settings.modePaletteIndex };
+    }
+    if (settings.customPaletteColors && typeof settings.customPaletteColors === 'object' && !Array.isArray(settings.customPaletteColors)) {
+      customPaletteColors = { ...customPaletteColors, ...settings.customPaletteColors };
+    }
+    if (settings.inheritShiftMode) inheritShiftMode = settings.inheritShiftMode;
+    if (settings.kidsLayouts && typeof settings.kidsLayouts === 'object') kidsLayouts = { ...settings.kidsLayouts };
+    if (settings.kidsRoomSize && typeof settings.kidsRoomSize === 'object') kidsRoomSize = { ...settings.kidsRoomSize };
+    if (settings.kidsDense && typeof settings.kidsDense === 'object') kidsDense = { ...settings.kidsDense };
+    if (typeof settings.denseTop === 'boolean') denseTop = settings.denseTop;
+    if (settings.landscapeBg) landscapeBg = settings.landscapeBg;
+    if (settings.landscapeBgColor) landscapeBgColor = settings.landscapeBgColor;
+    if (settings.landscapeBgImage) landscapeBgImage = settings.landscapeBgImage;
+    if (typeof settings.canvasReactMode === 'boolean') canvasReactMode = settings.canvasReactMode;
+    if (settings.accentColor) {
+      accentColor = settings.accentColor;
+      document.documentElement.style.setProperty('--accent', accentColor);
+    }
+    if (settings.hotkeys && typeof settings.hotkeys === 'object') {
+      hotkeys = { ...DEFAULT_HOTKEYS, ...settings.hotkeys };
+    }
+    if (settings.defaultFrameColor) defaultFrameColor = settings.defaultFrameColor;
+    if (settings.defaultBgColor) defaultBgColor = settings.defaultBgColor;
+    if (typeof settings.roomBgOpacity === 'number') roomBgOpacity = settings.roomBgOpacity;
+    if (typeof settings.roomGlowIntensity === 'number') {
+      roomGlowIntensity = settings.roomGlowIntensity;
+      document.documentElement.style.setProperty('--room-glow-intensity', roomGlowIntensity / 100);
+    }
+    if (typeof settings.roomGlowRange === 'number') {
+      roomGlowRange = settings.roomGlowRange;
+      document.documentElement.style.setProperty('--room-glow-range', `${roomGlowRange}px`);
+    }
+    if (settings.breathTargetColor) breathTargetColor = settings.breathTargetColor;
+    if (settings.breathTargetBgColor) breathTargetBgColor = settings.breathTargetBgColor;
+    if (typeof settings.breathScaleSize === 'number') breathScaleSize = settings.breathScaleSize;
+    if (typeof settings.breathAffectTiles === 'boolean') breathAffectTiles = settings.breathAffectTiles;
+    if (typeof settings.puddleIntervalMin === 'number') puddleIntervalMin = settings.puddleIntervalMin;
+    if (typeof settings.puddleIntervalMax === 'number') puddleIntervalMax = settings.puddleIntervalMax;
+    if (typeof settings.puddleRippleDuration === 'number') puddleRippleDuration = settings.puddleRippleDuration;
+    if (typeof settings.puddleMaxConcurrent === 'number') puddleMaxConcurrent = settings.puddleMaxConcurrent;
+    if (settings.activeRoomBorderColor) activeRoomBorderColor = settings.activeRoomBorderColor;
+    if (settings.selectedFolderColor) selectedFolderColor = settings.selectedFolderColor;
+    if (typeof settings.useCustomSelectedFolder === 'boolean') useCustomSelectedFolder = settings.useCustomSelectedFolder;
+    if (settings.unselectedFolderColor) unselectedFolderColor = settings.unselectedFolderColor;
+    if (typeof settings.useCustomUnselectedFolder === 'boolean') useCustomUnselectedFolder = settings.useCustomUnselectedFolder;
+    if (typeof settings.browserAutoSleep === 'boolean') browserAutoSleep = settings.browserAutoSleep;
+    if (typeof settings.autoSummarize === 'boolean') autoSummarize = settings.autoSummarize;
+    if (typeof settings.breathingDuration === 'number') breathingDuration = settings.breathingDuration;
+    if (typeof settings.lockFrame === 'boolean') lockFrame = settings.lockFrame;
+    if (typeof settings.lockBg === 'boolean') lockBg = settings.lockBg;
+    if (typeof settings.holdRenameEnabled === 'boolean') holdRenameEnabled = settings.holdRenameEnabled;
+    if (typeof settings.holdRenameDelay === 'number') holdRenameDelay = settings.holdRenameDelay;
+    if (settings.view && PX[settings.view]) { defaultView = settings.view; mode = settings.view; if ($('view')) $('view').value = mode; }
+    if (settings.groupKey) { groupKey = settings.groupKey; if ($('group')) $('group').value = groupKey; }
+    if (settings.sortKey) { sortKey = settings.sortKey; if ($('sort')) $('sort').value = sortKey; }
+    if (typeof settings.sortAsc === 'boolean') { sortAsc = settings.sortAsc; if ($('sortDir')) $('sortDir').textContent = sortAsc ? '↑' : '↓'; }
+    if (settings.colWidths) { colWidths = { ...colWidths, ...settings.colWidths }; applyColWidths(); }
+    if (typeof settings.showPreview === 'boolean') { showPreview = settings.showPreview; applyPreviewPane(); }
+    if (typeof settings.darkMode === 'boolean') { darkMode = settings.darkMode; applyTheme(); }
+    if (typeof settings.showHidden === 'boolean') showHidden = settings.showHidden;
+    if (typeof settings.showExt === 'boolean') showExt = settings.showExt;
+    if (typeof settings.showChecks === 'boolean') showChecks = settings.showChecks;
+    applyToggles();
+    if (settings.newTabTarget) newTabTarget = settings.newTabTarget;
+    if (Array.isArray(settings.scripts)) scripts = settings.scripts;
+    if (Array.isArray(settings.bookmarks)) bookmarks = settings.bookmarks;
+    if (Array.isArray(settings.recentFolders)) recentFolders = settings.recentFolders;
+    if (settings.landscapeLayout && typeof settings.landscapeLayout === 'object') landscapeLayout = settings.landscapeLayout;
+    if (settings.splitRatio) { splitRatio = settings.splitRatio; applySplitRatio(); }
 
-  const addNav = (title, arr, host) => {
-    const h = document.createElement('div'); h.className = 'h'; h.textContent = title; host.appendChild(h);
-    arr.forEach(p => {
-      const n = document.createElement('div'); n.className = 'n';
-      const i = document.createElement('img'); i.className = 'ico';
-      n.append(i, document.createTextNode(p.name));
-      n.title = p.path + ' (Middle-click for new tab)';
-      setIcon(i, { path: p.path, name: p.name, isDir: true }, 16, true);
-      n.onclick = () => go(p.path);
-      n.addEventListener('auxclick', e => { if (e.button === 1) newTab(p.path, [], e.shiftKey); });
-      wireDropTarget(n, () => p.path);
-      host.appendChild(n);
-    });
-  };
-  const qa = document.createElement('div'); nav.appendChild(qa);
-  addNav('Quick access', (cachedPlaces.cachedPins && cachedPlaces.cachedPins.length) ? cachedPlaces.cachedPins : cachedPlaces.places, qa);
-  const pc = document.createElement('div'); nav.appendChild(pc);
-  addNav('This PC', cachedPlaces.drives, pc);
+    // 2. Initialize tabs first
+    console.log('[PEEK-BOOT:3] Step 3: Initializing tabs. startPath from query:', params.get('path'), 'isPrimary:', isPrimary);
+    const startPath = params.get('path');
+    const sess = isPrimary && !startPath && settings.session && settings.session.tabs && settings.session.tabs.length ? settings.session : null;
+    if (sess && Array.isArray(sess.tabs)) { 
+      console.log(`[PEEK-BOOT:3] Restoring previous session with ${sess.tabs.length} tabs...`);
+      tabs = sess.tabs.map(t => ({
+        cur: t?.cur || HOME_URI,
+        hist: (t?.hist && t.hist.length) ? t.hist : [t?.cur || HOME_URI],
+        hi: typeof t?.hi === 'number' ? t.hi : 0,
+        mode: t?.mode || defaultView,
+        expanded: t?.expanded || []
+      })); 
+      const targetIdx = Math.min(sess.active || 0, tabs.length - 1);
+      console.log(`[PEEK-BOOT:3] Calling loadTab(${targetIdx}) from restored session...`);
+      loadTab(targetIdx); 
+    } else { 
+      const p = startPath || HOME_URI; 
+      console.log(`[PEEK-BOOT:3] Initializing fresh single tab with path="${p}"...`);
+      tabs = [{ cur: p, hist: [p], hi: 0, expanded: [] }]; 
+      console.log('[PEEK-BOOT:3] Calling loadTab(0)...');
+      loadTab(0); 
+    }
 
-  const startPath = params.get('path');
-  const sess = isPrimary && !startPath && settings.session && settings.session.tabs && settings.session.tabs.length ? settings.session : null;
-  if (sess) { tabs = sess.tabs; loadTab(Math.min(sess.active || 0, tabs.length - 1)); }
-  else { const p = startPath || HOME_URI; tabs = [{ cur: p, hist: [p], hi: 0, expanded: [] }]; loadTab(0); }
+    // 3. Populate sidebar skeleton
+    console.log('[PEEK-BOOT:3] Step 4: Populating sidebar skeleton in #nav...');
+    const nav = $('nav');
+    let qaHost = null;
+    let pcHost = null;
+    if (nav) {
+      nav.innerHTML = '';
+      const homeItem = document.createElement('div'); homeItem.className = 'n';
+      homeItem.innerHTML = `<span style="font-size:15px">🏠</span><span>Home Dashboard</span>`;
+      homeItem.onclick = () => go(HOME_URI);
+      homeItem.addEventListener('auxclick', e => { if (e.button === 1) newTab(HOME_URI, [], e.shiftKey); });
+      nav.appendChild(homeItem);
 
-  const pins = await window.api.pins();
-  if (pins.length) {
-    cachedPlaces.cachedPins = pins;
-    qa.innerHTML = '';
-    addNav('Quick access', pins, qa);
-    if (cur === HOME_URI) show();
+      bmHost = document.createElement('div'); 
+      nav.appendChild(bmHost);
+      renderBookmarksNav();
+
+      qaHost = document.createElement('div'); 
+      nav.appendChild(qaHost);
+      pcHost = document.createElement('div'); 
+      nav.appendChild(pcHost);
+    }
+
+    const renderNavGroup = (title, arr, host) => {
+      if (!host) return;
+      host.innerHTML = '';
+      const h = document.createElement('div'); h.className = 'h'; h.textContent = title; host.appendChild(h);
+      (arr || []).forEach(p => {
+        const n = document.createElement('div'); n.className = 'n';
+        const i = document.createElement('img'); i.className = 'ico';
+        n.append(i, document.createTextNode(p.name));
+        n.title = p.path + ' (Middle-click for new tab)';
+        setIcon(i, { path: p.path, name: p.name, isDir: true }, 16, true);
+        n.onclick = () => go(p.path);
+        n.addEventListener('auxclick', e => { if (e.button === 1) newTab(p.path, [], e.shiftKey); });
+        wireDropTarget(n, () => p.path);
+        host.appendChild(n);
+      });
+    };
+
+    // 4. Asynchronously fetch places/drives without blocking UI
+    console.log('[PEEK-BOOT:3] Step 5: Triggering places() and pins() shell requests...');
+    if (window.api && typeof window.api.places === 'function') {
+      window.api.places().then(pl => {
+        if (!pl) return;
+        cachedPlaces = { ...cachedPlaces, ...pl };
+        renderNavGroup('Quick access', cachedPlaces.cachedPins?.length ? cachedPlaces.cachedPins : cachedPlaces.places, qaHost);
+        renderNavGroup('This PC', cachedPlaces.drives, pcHost);
+        if (cur === HOME_URI) show(); // Re-render Home Dashboard with drives populated
+      }).catch(err => console.warn('[Peek] Failed loading places:', err));
+    }
+
+    if (window.api && typeof window.api.pins === 'function') {
+      window.api.pins().then(pins => {
+        if (pins && pins.length) {
+          cachedPlaces.cachedPins = pins;
+          renderNavGroup('Quick access', pins, qaHost);
+          if (cur === HOME_URI) show();
+        }
+      }).catch(err => console.warn('[Peek] Failed loading pins:', err));
+    }
+
+    if (window.api && typeof window.api.getClip === 'function') {
+      syncClip().catch(() => {});
+    }
+    console.log('%c[PEEK-BOOT:3] === Async Bootstrap Sequence Completed Successfully ===', 'background: #22c55e; color: #fff; font-size: 13px; font-weight: bold; padding: 2px 6px; border-radius: 3px');
+  } catch (err) {
+    console.error('%c[PEEK-BOOT:3] FATAL INITIALIZATION ERROR IN RENDERER:', 'background: #ef4444; color: #fff; font-size: 14px; font-weight: bold; padding: 4px 8px', err);
+    reportError(err);
   }
 })();
 
@@ -4634,12 +5581,41 @@ function fillMenu(entries) {
   }
 }
 
-const refreshKeep = () => show();
+const refreshKeep = async (affectedDirs = null) => {
+  if ((mode === 'landscape' || mode === 'lens') && window._landscapeState?.roomMap) {
+    const rmMap = window._landscapeState.roomMap;
+    if (Array.isArray(affectedDirs) && affectedDirs.length) {
+      const normSet = new Set(affectedDirs.filter(Boolean).map(d => normPath(d)));
+      let anyMatched = false;
+      for (const [rPath, r] of rmMap.entries()) {
+        if (normSet.has(normPath(rPath)) && r.populate) {
+          anyMatched = true;
+          await r.populate();
+        }
+      }
+      if (!anyMatched) {
+        for (const r of rmMap.values()) {
+          if (r.populate) await r.populate();
+        }
+      }
+    } else {
+      for (const r of rmMap.values()) {
+        if (r.populate) await r.populate();
+      }
+    }
+    window._landscapeState.syncDoorwayBadges?.();
+    window._landscapeState.drawBridges?.();
+    updateStatus();
+    return;
+  }
+  await show();
+};
 const pasteDir = it => (it && it.isDir && selected.size <= 1) ? it.path : cur;
 async function doPaste(dest) {
   if (!dest || dest === HOME_URI) return;
   await syncClip();
   if (!clip) return;
+  const srcParents = (clip.paths || []).map(p => parent(p));
   const r = await window.api.paste(clip.mode, clip.paths, dest);
   if (r.moved && r.moved.length) {
     undoStack.push({ type: 'move', ops: r.moved.map(m => ({ from: m.to, to: m.from.slice(0, m.from.lastIndexOf('\\')) })) });
@@ -4649,7 +5625,7 @@ async function doPaste(dest) {
   }
   if (clip.mode === 'cut') await storeClip(null);
   if (r.skipped && r.skipped.length) alert('Skipped (already exists or failed):\n' + r.skipped.join('\n'));
-  await refreshKeep();
+  await refreshKeep([dest, ...srcParents]);
   if (r.copied && r.copied.length) {
     clearSelection();
     const newPaths = new Set(r.copied.map(c => c.to));
@@ -4740,9 +5716,15 @@ async function doUndo() {
     updateStatus();
     return;
   } else if (last.type === 'move') {
-    for (const op of last.ops) await window.api.paste('cut', [op.from], op.to);
+    const affected = [];
+    for (const op of last.ops) {
+      affected.push(parent(op.from), op.to);
+      await window.api.paste('cut', [op.from], op.to);
+    }
+    await refreshKeep(affected);
+    return;
   }
-  refreshKeep();
+  await refreshKeep();
 }
 async function doDelete(paths) {
   if (!paths.length) return;
@@ -4756,7 +5738,7 @@ async function doDelete(paths) {
   if (r.error) alert(r.error);
   if (r.ok) {
     clearSelection();
-    await refreshKeep();
+    await refreshKeep(paths.map(p => parent(p)));
     if (nextItemPath) {
       const refreshedRows = visibleRows();
       const newRow = refreshedRows.find(r => r._item && r._item.path === nextItemPath) || refreshedRows[Math.min(idx, refreshedRows.length - 1)];
@@ -4777,7 +5759,7 @@ async function doPermanentDelete(paths) {
   if (r.error) alert(r.error);
   if (r.ok) {
     clearSelection();
-    await refreshKeep();
+    await refreshKeep(paths.map(p => parent(p)));
     if (nextItemPath) {
       const refreshedRows = visibleRows();
       const newRow = refreshedRows.find(r => r._item && r._item.path === nextItemPath) || refreshedRows[Math.min(idx, refreshedRows.length - 1)];
@@ -5043,7 +6025,16 @@ document.addEventListener('keydown', async e => {
   if (e.ctrlKey && e.key === 'Tab') { e.preventDefault(); switchTab((active + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length); return; }
   if (e.ctrlKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); switchTab(Math.min(+e.key - 1, tabs.length - 1)); return; }
   if (matchesHotkey(e, 'focusAddress') || (e.altKey && e.key.toLowerCase() === 'd')) { e.preventDefault(); startAddressEdit(); return; }
-  if (matchesHotkey(e, 'focusSearch')) { e.preventDefault(); $('search').focus(); $('search').select(); return; }
+  if (matchesHotkey(e, 'focusSearch')) {
+    e.preventDefault();
+    if ((mode === 'landscape' || mode === 'lens') && typeof window._openLandscapeJumpModal === 'function') {
+      window._openLandscapeJumpModal('', true);
+    } else {
+      $('search').focus();
+      $('search').select();
+    }
+    return;
+  }
   if (matchesHotkey(e, 'togglePreview')) { e.preventDefault(); $('previewBtn').click(); return; }
   if (matchesHotkey(e, 'toggleSplit')) { e.preventDefault(); splitState.active ? closeSplit() : activateSplit('right', cur); return; }
   if (matchesHotkey(e, 'goHome')) { e.preventDefault(); go(HOME_URI); return; }
@@ -5253,10 +6244,19 @@ document.addEventListener('keydown', async e => {
       if ($('setPuddleMaxConcurrent')) $('setPuddleMaxConcurrent').value = Math.min(50, puddleMaxConcurrent);
       if ($('setPuddleMaxConcurrentNum')) $('setPuddleMaxConcurrentNum').value = puddleMaxConcurrent;
       if ($('setActiveRoomColor')) $('setActiveRoomColor').value = activeRoomBorderColor;
+      if ($('setUseCustomUnselectedFolder')) $('setUseCustomUnselectedFolder').checked = useCustomUnselectedFolder;
+      if ($('setUseCustomUnselectedFolderGen')) $('setUseCustomUnselectedFolderGen').checked = useCustomUnselectedFolder;
+      if ($('setUnselectedFolderColor')) $('setUnselectedFolderColor').value = unselectedFolderColor || '#475569';
+      if ($('setUnselectedFolderColorGen')) $('setUnselectedFolderColorGen').value = unselectedFolderColor || '#475569';
       if ($('setUseCustomSelectedFolder')) $('setUseCustomSelectedFolder').checked = useCustomSelectedFolder;
+      if ($('setUseCustomSelectedFolderGen')) $('setUseCustomSelectedFolderGen').checked = useCustomSelectedFolder;
       if ($('setSelectedFolderColor')) {
         $('setSelectedFolderColor').value = selectedFolderColor || '#0078d4';
         $('setSelectedFolderColor').disabled = false; // Always clickable!
+      }
+      if ($('setSelectedFolderColorGen')) {
+        $('setSelectedFolderColorGen').value = selectedFolderColor || '#0078d4';
+        $('setSelectedFolderColorGen').disabled = false;
       }
       if ($('setBreathDuration')) $('setBreathDuration').value = Math.min(360, breathingDuration);
       if ($('setBreathDurationNum')) $('setBreathDurationNum').value = breathingDuration;
@@ -5296,7 +6296,17 @@ document.addEventListener('keydown', async e => {
       if ($('setCustomImageRow')) $('setCustomImageRow').style.display = bgVal === 'custom-image' ? 'flex' : 'none';
 
       settingsBackdrop.classList.remove('hidden');
+      renderResourceTelemetryUI();
     };
+
+    $('resBaselineBtn')?.addEventListener('click', async () => {
+      _resBaseline = null;
+      await sampleResourceState();
+      recordResourceAction('Pinned New Baseline');
+    });
+    $('resRefreshBtn')?.addEventListener('click', () => {
+      renderResourceTelemetryUI();
+    });
 
     if (settingsClose) settingsClose.onclick = () => settingsBackdrop.classList.add('hidden');
     settingsBackdrop.onclick = e => { if (e.target === settingsBackdrop) settingsBackdrop.classList.add('hidden'); };
@@ -5474,16 +6484,43 @@ document.addEventListener('keydown', async e => {
         vp.style.setProperty('--active-border-color', activeRoomBorderColor);
       }
     });
-    $('setUseCustomSelectedFolder')?.addEventListener('change', e => {
-      useCustomSelectedFolder = !!e.target.checked;
+    const syncFolderColorUI = () => {
+      if ($('setUseCustomUnselectedFolder')) $('setUseCustomUnselectedFolder').checked = useCustomUnselectedFolder;
+      if ($('setUseCustomUnselectedFolderGen')) $('setUseCustomUnselectedFolderGen').checked = useCustomUnselectedFolder;
+      if ($('setUnselectedFolderColor')) $('setUnselectedFolderColor').value = unselectedFolderColor;
+      if ($('setUnselectedFolderColorGen')) $('setUnselectedFolderColorGen').value = unselectedFolderColor;
+      if ($('setUseCustomSelectedFolder')) $('setUseCustomSelectedFolder').checked = useCustomSelectedFolder;
+      if ($('setUseCustomSelectedFolderGen')) $('setUseCustomSelectedFolderGen').checked = useCustomSelectedFolder;
+      if ($('setSelectedFolderColor')) $('setSelectedFolderColor').value = selectedFolderColor;
+      if ($('setSelectedFolderColorGen')) $('setSelectedFolderColorGen').value = selectedFolderColor;
       window._landscapeState?.syncDoorwayBadges?.();
       persist();
+    };
+    ['setUseCustomUnselectedFolder', 'setUseCustomUnselectedFolderGen'].forEach(id => {
+      $(id)?.addEventListener('change', e => {
+        useCustomUnselectedFolder = !!e.target.checked;
+        syncFolderColorUI();
+      });
     });
-    $('setSelectedFolderColor')?.addEventListener('input', e => {
-      selectedFolderColor = e.target.value || '#0078d4';
-      useCustomSelectedFolder = true;
-      if ($('setUseCustomSelectedFolder')) $('setUseCustomSelectedFolder').checked = true;
-      window._landscapeState?.syncDoorwayBadges?.();
+    ['setUnselectedFolderColor', 'setUnselectedFolderColorGen'].forEach(id => {
+      $(id)?.addEventListener('input', e => {
+        unselectedFolderColor = e.target.value || '#475569';
+        useCustomUnselectedFolder = true;
+        syncFolderColorUI();
+      });
+    });
+    ['setUseCustomSelectedFolder', 'setUseCustomSelectedFolderGen'].forEach(id => {
+      $(id)?.addEventListener('change', e => {
+        useCustomSelectedFolder = !!e.target.checked;
+        syncFolderColorUI();
+      });
+    });
+    ['setSelectedFolderColor', 'setSelectedFolderColorGen'].forEach(id => {
+      $(id)?.addEventListener('input', e => {
+        selectedFolderColor = e.target.value || '#0078d4';
+        useCustomSelectedFolder = true;
+        syncFolderColorUI();
+      });
     });
     $('setRoomGlow')?.addEventListener('input', e => {
       const val = parseInt(e.target.value) || 0;
@@ -5694,8 +6731,10 @@ document.addEventListener('keydown', async e => {
         puddleMaxConcurrent = Math.max(1, parseInt($('setPuddleMaxConcurrentNum')?.value ?? $('setPuddleMaxConcurrent')?.value) || 4);
         activeRoomBorderColor = $('setActiveRoomColor')?.value || '#00f0ff';
         document.documentElement.style.setProperty('--active-room-border', activeRoomBorderColor);
-        useCustomSelectedFolder = !!$('setUseCustomSelectedFolder')?.checked;
-        selectedFolderColor = $('setSelectedFolderColor')?.value || '#0078d4';
+        useCustomUnselectedFolder = !!($('setUseCustomUnselectedFolder')?.checked || $('setUseCustomUnselectedFolderGen')?.checked);
+        unselectedFolderColor = $('setUnselectedFolderColor')?.value || $('setUnselectedFolderColorGen')?.value || '#475569';
+        useCustomSelectedFolder = !!($('setUseCustomSelectedFolder')?.checked || $('setUseCustomSelectedFolderGen')?.checked);
+        selectedFolderColor = $('setSelectedFolderColor')?.value || $('setSelectedFolderColorGen')?.value || '#0078d4';
         breathingDuration = parseInt($('setBreathDurationNum')?.value) || parseInt($('setBreathDuration')?.value) || 6;
         lockFrame = !!$('setLockFrame')?.checked;
         lockBg = !!$('setLockBg')?.checked;
